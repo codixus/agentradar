@@ -1,26 +1,125 @@
-import { expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { main } from "./index.ts";
 
-test("scan subcommand is a recognized but not-yet-implemented command", () => {
+function captureConsole() {
+  const logs: string[] = [];
+  const errors: string[] = [];
+  const originalLog = console.log;
   const originalError = console.error;
-  let logged = "";
-  console.error = (msg: string) => {
-    logged = msg;
+  console.log = (msg: unknown) => {
+    logs.push(String(msg));
   };
-  const code = main(["scan"]);
-  console.error = originalError;
-  expect(code).toBe(1);
-  expect(logged).toContain("scan");
+  console.error = (msg: unknown) => {
+    errors.push(String(msg));
+  };
+  return {
+    logs,
+    errors,
+    restore: () => {
+      console.log = originalLog;
+      console.error = originalError;
+    },
+  };
+}
+
+let activeServer: ReturnType<typeof Bun.serve> | null = null;
+
+afterEach(() => {
+  activeServer?.stop(true);
+  activeServer = null;
 });
 
-test("no arguments prints a version line and exits 0", () => {
-  const originalLog = console.log;
-  let logged = "";
-  console.log = (msg: string) => {
-    logged = msg;
-  };
-  const code = main([]);
-  console.log = originalLog;
-  expect(code).toBe(0);
-  expect(logged).toContain("agentsight");
+function startAgentReadyFixture() {
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname === "/") {
+        const accept = req.headers.get("accept") ?? "";
+        if (accept.includes("text/markdown")) {
+          return new Response("# Example", {
+            headers: { "content-type": "text/markdown" },
+          });
+        }
+        return new Response("<html></html>", {
+          headers: { "content-type": "text/html" },
+        });
+      }
+      if (url.pathname === "/robots.txt") {
+        return new Response(
+          "User-agent: *\nDisallow:\nContent-Signal: search=yes\n",
+        );
+      }
+      if (url.pathname === "/sitemap.xml") {
+        return new Response(
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
+        );
+      }
+      if (url.pathname === "/llms.txt") {
+        return new Response("# Example\n");
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  activeServer = server;
+  return server;
+}
+
+describe("agentsight CLI", () => {
+  test("no arguments prints usage and exits 0", async () => {
+    const console_ = captureConsole();
+    const code = await main([]);
+    console_.restore();
+    expect(code).toBe(0);
+    expect(console_.logs.join("\n")).toContain("agentsight");
+  });
+
+  test("scan with no url prints a usage error and exits 1", async () => {
+    const console_ = captureConsole();
+    const code = await main(["scan"]);
+    console_.restore();
+    expect(code).toBe(1);
+    expect(console_.errors.join("\n")).toContain(
+      "Usage: agentsight scan <url>",
+    );
+  });
+
+  test("scan with an invalid url reports a clean error, not a crash", async () => {
+    const console_ = captureConsole();
+    const code = await main(["scan", "not-a-url"]);
+    console_.restore();
+    expect(code).toBe(1);
+    expect(console_.errors.join("\n")).toContain("not a valid URL");
+  });
+
+  test("scan with an unknown command prints usage and exits 1", async () => {
+    const console_ = captureConsole();
+    const code = await main(["frobnicate"]);
+    console_.restore();
+    expect(code).toBe(1);
+    expect(console_.errors.join("\n")).toContain("Unknown command");
+  });
+
+  test("scan against a real target prints a human-readable report with a grade", async () => {
+    const server = startAgentReadyFixture();
+    const console_ = captureConsole();
+    const code = await main(["scan", server.url.href]);
+    console_.restore();
+    expect(code).toBe(0);
+    const output = console_.logs.join("\n");
+    expect(output).toContain("Grade:");
+    expect(output).toContain(server.url.href);
+  });
+
+  test("scan --json prints valid, parseable JSON matching the ScanResult shape", async () => {
+    const server = startAgentReadyFixture();
+    const console_ = captureConsole();
+    const code = await main(["scan", server.url.href, "--json"]);
+    console_.restore();
+    expect(code).toBe(0);
+    const parsed = JSON.parse(console_.logs.join("\n"));
+    expect(parsed.url).toBe(server.url.href);
+    expect(Array.isArray(parsed.checks)).toBe(true);
+    expect(typeof parsed.score).toBe("number");
+  });
 });
