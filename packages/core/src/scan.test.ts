@@ -240,6 +240,23 @@ describe("runScan", () => {
   test("rejects non-http(s) schemes with a clean error instead of attempting to scan them", async () => {
     await expect(runScan("file:///etc/passwd")).rejects.toThrow(/http/i);
   });
+
+  test("robots.txt is fetched exactly once per scan, shared across the three checks that need it", async () => {
+    let robotsTxtRequests = 0;
+    const server = startFixtureServer({
+      "/robots.txt": () => {
+        robotsTxtRequests += 1;
+        return textResponse(GOOD_ROBOTS);
+      },
+      "/sitemap.xml": () => textResponse(GOOD_SITEMAP),
+      "/llms.txt": () => textResponse(GOOD_LLMS_TXT),
+      "/": markdownAwareHomepage,
+    });
+
+    await runScan(server.url.href);
+
+    expect(robotsTxtRequests).toBe(1);
+  });
 });
 
 describe("runChecks", () => {
