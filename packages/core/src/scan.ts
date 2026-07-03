@@ -65,10 +65,16 @@ export interface RunScanOptions {
 // (computeScore in scoring.ts): a category made only of warning/notice
 // checks would otherwise always read 100 even when every check in it fails,
 // which is misleading in a per-category report.
+//
+// Inferred checks (e.g. MPP, which has no discovery mechanism and always
+// reports "cannot verify") are excluded from the ratio: they are not
+// verified pass/fail signals and should not permanently cap a category's
+// score even when the site is otherwise perfectly configured.
 function categoryScore(checks: CheckResult[]): number {
-  if (checks.length === 0) return 100;
-  const passing = checks.filter((c) => c.passed).length;
-  return Math.round((passing / checks.length) * 100);
+  const scorable = checks.filter((c) => !c.inferred);
+  if (scorable.length === 0) return 100;
+  const passing = scorable.filter((c) => c.passed).length;
+  return Math.round((passing / scorable.length) * 100);
 }
 
 function groupByCategory(checks: CheckResult[]): CategoryResult[] {

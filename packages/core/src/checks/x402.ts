@@ -1,4 +1,5 @@
 import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
+import { fetchRaw } from "./fetch-raw.ts";
 import { fail, pass } from "./util.ts";
 
 const meta: CheckMeta = {
@@ -14,15 +15,9 @@ const meta: CheckMeta = {
 // scan the site's full API surface (a real limitation, not a false claim of
 // completeness).
 async function run(ctx: CheckContext): Promise<CheckResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
-  let res: Response;
-  try {
-    res = await ctx.fetchImpl(ctx.baseUrl, { signal: controller.signal });
-  } catch {
+  const res = await fetchRaw(ctx, ctx.baseUrl);
+  if (!res) {
     return fail(meta, `could not reach ${ctx.baseUrl.href}`);
-  } finally {
-    clearTimeout(timer);
   }
   if (
     res.status === 402 &&

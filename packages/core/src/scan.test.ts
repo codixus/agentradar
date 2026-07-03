@@ -411,6 +411,53 @@ describe("runScan", () => {
     );
   });
 
+  test("DNS-AID: a resolver that hangs is bounded by timeoutMs, not left to hang the whole scan", async () => {
+    const server = startFixtureServer({});
+    // A mock fetch must honor the abort signal itself to realistically stand
+    // in for the real fetch() -- otherwise this test would prove nothing
+    // about fetchRaw's timeout wiring, only about a mock that never hangs.
+    const hangingDohFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (!url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return fetch(input, init);
+      }
+      return new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            resolve(
+              new Response(JSON.stringify({}), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+            ),
+          2000,
+        );
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    }) as typeof fetch;
+
+    const start = Date.now();
+    const result = await runScan(server.url.href, {
+      timeoutMs: 50,
+      fetchImpl: hangingDohFetch,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(1500);
+    expect(result.checks.find((c) => c.id === "dns-aid")?.passed).toBe(false);
+  });
+
   test("x402: a 402 with a payment-required header passes; a plain 402 or a normal 200 does not", async () => {
     const gatedServer = startFixtureServer({
       "/": () =>
@@ -492,6 +539,37 @@ describe("runScan", () => {
     expect(
       result.checks.find((c) => c.id === "deep-link-association")?.passed,
     ).toBe(false);
+  });
+
+  test("well-known JSON checks (shared factory): a non-JSON 200 body fails without crashing", async () => {
+    const server = startFixtureServer({
+      "/.well-known/api-catalog": () =>
+        textResponse("<html>not json</html>", {
+          headers: { "content-type": "text/html" },
+        }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const apiCatalog = result.checks.find((c) => c.id === "api-catalog");
+    expect(apiCatalog?.passed).toBe(false);
+    expect(apiCatalog?.evidence).toContain("not valid JSON");
+  });
+
+  test("well-known JSON checks (shared factory): valid JSON in the wrong shape fails, not a false pass", async () => {
+    const server = startFixtureServer({
+      "/.well-known/api-catalog": () => jsonResponse({ unrelated: "field" }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const apiCatalog = result.checks.find((c) => c.id === "api-catalog");
+    expect(apiCatalog?.passed).toBe(false);
+    expect(apiCatalog?.evidence).toContain("linkset");
   });
 });
 

@@ -1,4 +1,5 @@
 import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
+import { fetchRaw } from "./fetch-raw.ts";
 import { fail, pass } from "./util.ts";
 
 const meta: CheckMeta = {
@@ -11,6 +12,7 @@ const meta: CheckMeta = {
 const DOH_ENDPOINT = "https://cloudflare-dns.com/dns-query";
 
 interface DohResponse {
+  Status?: number;
   Answer?: Array<{ data?: string }>;
 }
 
@@ -18,24 +20,31 @@ interface DohResponse {
 // _index._agents.<domain>. Node/Bun's dns module does not support querying
 // the SVCB/HTTPS record type (only A/AAAA/ANY/CAA/CNAME/MX/NS/PTR/SOA/SRV/
 // TXT are accepted), so this queries a DNS-over-HTTPS resolver instead --
-// still a single passive request, and it goes through ctx.fetchImpl like
-// every other check instead of needing a separate DNS resolver seam.
+// still a single passive request, via fetchRaw so it is timeout-bounded
+// like every other outbound request in this package.
 async function run(ctx: CheckContext): Promise<CheckResult> {
   const hostname = `_index._agents.${ctx.baseUrl.hostname}`;
   const query = `${DOH_ENDPOINT}?name=${encodeURIComponent(hostname)}&type=SVCB`;
-  let res: Response;
-  try {
-    res = await ctx.fetchImpl(query, {
-      headers: { accept: "application/dns-json" },
-    });
-  } catch {
+  const res = await fetchRaw(ctx, query, {
+    headers: { accept: "application/dns-json" },
+  });
+  if (!res) {
     return fail(meta, "could not query a DNS-over-HTTPS resolver");
   }
   if (!res.ok) {
     return fail(meta, `DNS-over-HTTPS query returned ${res.status}`);
   }
   const data = (await res.json().catch(() => null)) as DohResponse | null;
-  const answers = data?.Answer;
+  if (data === null) {
+    return fail(meta, "DNS-over-HTTPS query returned an unparseable response");
+  }
+  if ((data.Status ?? 0) >= 2) {
+    return fail(
+      meta,
+      `DNS-over-HTTPS resolver returned an error (Status ${data.Status})`,
+    );
+  }
+  const answers = data.Answer;
   if (!Array.isArray(answers) || answers.length === 0) {
     return fail(
       meta,

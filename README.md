@@ -12,7 +12,30 @@ It is deliberately narrow. AgentSight does **not** check general site health, pe
 npx agentsight scan <url>
 ```
 
-Add `--json` for machine-readable output.
+Add `--json` for machine-readable output:
+
+```json
+{
+  "url": "https://example.com/",
+  "score": 100,
+  "grade": "A",
+  "checks": [
+    {
+      "id": "robots-txt",
+      "title": "robots.txt",
+      "category": "can-agents-find-you",
+      "severityTier": "warning",
+      "passed": true,
+      "evidence": "robots.txt found (128 bytes)"
+    }
+  ],
+  "categories": [
+    { "category": "can-agents-find-you", "score": 80, "checks": ["..."] }
+  ]
+}
+```
+
+`checks[].inferred` is `true` for the two checks (Web Bot Auth, MPP) that confirm only that a signal is published, not that it is actually enforced.
 
 ## What it checks
 
