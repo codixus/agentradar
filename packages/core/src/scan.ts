@@ -70,7 +70,7 @@ export interface RunScanOptions {
 // reports "cannot verify") are excluded from the ratio: they are not
 // verified pass/fail signals and should not permanently cap a category's
 // score even when the site is otherwise perfectly configured.
-function categoryScore(checks: CheckResult[]): number {
+export function categoryScore(checks: CheckResult[]): number {
   const scorable = checks.filter((c) => !c.inferred);
   if (scorable.length === 0) return 100;
   const passing = scorable.filter((c) => c.passed).length;

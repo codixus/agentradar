@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { runChecks, runScan } from "./scan.ts";
-import type { Check, CheckContext } from "./types.ts";
+import { categoryScore, runChecks, runScan } from "./scan.ts";
+import type { Check, CheckContext, CheckResult } from "./types.ts";
 
 type RouteHandler = (req: Request) => Response | Promise<Response>;
 
@@ -411,6 +411,67 @@ describe("runScan", () => {
     );
   });
 
+  test("DNS-AID: NXDOMAIN (Status 3, the common case for a brand-new discovery name) reads as no-record-found, not a resolver error", async () => {
+    const server = startFixtureServer({});
+    const nxdomainFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ Status: 3 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return fetch(input, init);
+    }) as typeof fetch;
+
+    const result = await runScan(server.url.href, { fetchImpl: nxdomainFetch });
+
+    const dnsAid = result.checks.find((c) => c.id === "dns-aid");
+    expect(dnsAid?.passed).toBe(false);
+    expect(dnsAid?.evidence).toContain("no SVCB record found");
+    expect(dnsAid?.evidence).not.toContain("error");
+  });
+
+  test("DNS-AID: a real resolver error (SERVFAIL, Status 2) is reported distinctly from a genuine no-record answer", async () => {
+    const server = startFixtureServer({});
+    const servfailFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ Status: 2 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return fetch(input, init);
+    }) as typeof fetch;
+
+    const result = await runScan(server.url.href, { fetchImpl: servfailFetch });
+
+    const dnsAid = result.checks.find((c) => c.id === "dns-aid");
+    expect(dnsAid?.passed).toBe(false);
+    expect(dnsAid?.evidence).toContain("resolver returned an error");
+  });
+
   test("DNS-AID: a resolver that hangs is bounded by timeoutMs, not left to hang the whole scan", async () => {
     const server = startFixtureServer({});
     // A mock fetch must honor the abort signal itself to realistically stand
@@ -596,5 +657,40 @@ describe("runChecks", () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.passed).toBe(false);
     expect(results[0]?.evidence).toContain("crashed");
+  });
+});
+
+describe("categoryScore", () => {
+  function result(overrides: Partial<CheckResult>): CheckResult {
+    return {
+      id: "test-check",
+      title: "Test check",
+      category: "test",
+      severityTier: "notice",
+      passed: true,
+      evidence: "",
+      ...overrides,
+    };
+  }
+
+  test("an always-failing inferred check does not cap a category that is otherwise perfect", async () => {
+    const checks = [
+      result({ passed: true }),
+      result({ passed: false, inferred: true }),
+    ];
+    expect(categoryScore(checks)).toBe(100);
+  });
+
+  test("a category made only of inferred checks is not penalized (nothing verifiable to score)", async () => {
+    const checks = [
+      result({ passed: false, inferred: true }),
+      result({ passed: false, inferred: true }),
+    ];
+    expect(categoryScore(checks)).toBe(100);
+  });
+
+  test("a real (non-inferred) failure still lowers the category score", async () => {
+    const checks = [result({ passed: true }), result({ passed: false })];
+    expect(categoryScore(checks)).toBe(50);
   });
 });

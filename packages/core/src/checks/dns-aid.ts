@@ -38,10 +38,16 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   if (data === null) {
     return fail(meta, "DNS-over-HTTPS query returned an unparseable response");
   }
-  if ((data.Status ?? 0) >= 2) {
+  // DNS RCODEs: 0 = NOERROR, 3 = NXDOMAIN -- both mean "no SVCB record here"
+  // for this check's purposes (NXDOMAIN just means the name doesn't exist at
+  // all, which is the common case for a brand-new discovery convention).
+  // Anything else (SERVFAIL, REFUSED, ...) is a genuine resolver error, not
+  // an answer about the target's DNS-AID support.
+  const status = data.Status ?? 0;
+  if (status !== 0 && status !== 3) {
     return fail(
       meta,
-      `DNS-over-HTTPS resolver returned an error (Status ${data.Status})`,
+      `DNS-over-HTTPS resolver returned an error (Status ${status})`,
     );
   }
   const answers = data.Answer;
