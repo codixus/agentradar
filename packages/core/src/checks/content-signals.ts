@@ -1,5 +1,4 @@
 import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
-import { fetchText } from "./fetch-text.ts";
 import { fail, pass } from "./util.ts";
 
 const meta: CheckMeta = {
@@ -9,8 +8,9 @@ const meta: CheckMeta = {
   severityTier: "warning",
 };
 
+// robots.txt is prefetched once per scan and shared via ctx.robotsTxt (see scan.ts).
 async function run(ctx: CheckContext): Promise<CheckResult> {
-  const result = await fetchText(ctx, "/robots.txt");
+  const result = ctx.robotsTxt;
   if (!result?.ok) {
     return fail(meta, "no robots.txt found to declare Content-Signal in");
   }

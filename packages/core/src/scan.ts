@@ -1,5 +1,6 @@
 import { aiBotRulesCheck } from "./checks/ai-bot-rules.ts";
 import { contentSignalsCheck } from "./checks/content-signals.ts";
+import { fetchText } from "./checks/fetch-text.ts";
 import { llmsTxtCheck } from "./checks/llms-txt.ts";
 import { markdownNegotiationCheck } from "./checks/markdown-negotiation.ts";
 import { robotsTxtCheck } from "./checks/robots-txt.ts";
@@ -27,17 +28,15 @@ export interface RunScanOptions {
   timeoutMs?: number;
 }
 
-function withTimeout(fetchImpl: typeof fetch, timeoutMs: number): typeof fetch {
-  return (async (...args: Parameters<typeof fetch>) => {
-    const [input, init] = args;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetchImpl(input, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  }) as typeof fetch;
+// A category score is the plain pass ratio of every check in that category,
+// deliberately not the error-tier-only rule used for the composite score
+// (computeScore in scoring.ts): a category made only of warning/notice
+// checks would otherwise always read 100 even when every check in it fails,
+// which is misleading in a per-category report.
+function categoryScore(checks: CheckResult[]): number {
+  if (checks.length === 0) return 100;
+  const passing = checks.filter((c) => c.passed).length;
+  return Math.round((passing / checks.length) * 100);
 }
 
 function groupByCategory(checks: CheckResult[]): CategoryResult[] {
@@ -49,28 +48,21 @@ function groupByCategory(checks: CheckResult[]): CategoryResult[] {
   }
   return [...byCategory.entries()].map(([category, categoryChecks]) => ({
     category,
-    score: computeScore(categoryChecks).score,
+    score: categoryScore(categoryChecks),
     checks: categoryChecks,
   }));
 }
 
-export async function runScan(
-  url: string,
-  options: RunScanOptions = {},
-): Promise<ScanResult> {
-  const baseUrl = new URL(url);
-  const fetchImpl = withTimeout(
-    options.fetchImpl ?? fetch,
-    options.timeoutMs ?? 8000,
-  );
-  const ctx: CheckContext = { baseUrl, fetchImpl };
-
+export async function runChecks(
+  checks: Check[],
+  ctx: CheckContext,
+): Promise<CheckResult[]> {
   const settled = await Promise.allSettled(
-    ALL_CHECKS.map((check) => check.run(ctx)),
+    checks.map((check) => check.run(ctx)),
   );
-  const checks: CheckResult[] = settled.map((outcome, index) => {
+  return settled.map((outcome, index) => {
     if (outcome.status === "fulfilled") return outcome.value;
-    const check = ALL_CHECKS[index];
+    const check = checks[index];
     return {
       id: check.id,
       title: check.title,
@@ -80,7 +72,35 @@ export async function runScan(
       evidence: `check crashed: ${String(outcome.reason)}`,
     };
   });
+}
 
+// packages/core trusts its input: it is the engine behind a CLI where the
+// caller picks their own scan target, the same trust model as curl. A
+// caller that accepts a URL from someone else it does not control (e.g. a
+// future web-hosted scan endpoint) is responsible for its own SSRF
+// hardening -- private/internal-IP filtering, redirect caps, response-size
+// caps -- before calling runScan; this function only rejects unscannable
+// schemes and bounds each request by timeoutMs.
+export async function runScan(
+  url: string,
+  options: RunScanOptions = {},
+): Promise<ScanResult> {
+  const baseUrl = new URL(url);
+  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+    throw new Error(
+      `unsupported URL scheme "${baseUrl.protocol}" - only http and https can be scanned`,
+    );
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 8000;
+  const robotsTxt = await fetchText(
+    { baseUrl, fetchImpl, timeoutMs },
+    "/robots.txt",
+  );
+  const ctx: CheckContext = { baseUrl, fetchImpl, timeoutMs, robotsTxt };
+
+  const checks = await runChecks(ALL_CHECKS, ctx);
   const { score, grade } = computeScore(checks);
 
   return {

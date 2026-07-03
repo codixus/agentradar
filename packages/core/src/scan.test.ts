@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { runScan } from "./scan.ts";
+import { runChecks, runScan } from "./scan.ts";
+import type { Check, CheckContext } from "./types.ts";
 
 type RouteHandler = (req: Request) => Response | Promise<Response>;
 
@@ -26,6 +27,23 @@ afterEach(() => {
 
 function textResponse(body: string, init: ResponseInit = {}): Response {
   return new Response(body, { status: 200, ...init });
+}
+
+function stalledBodyResponse(
+  firstChunk: string,
+  secondChunk: string,
+  stallMs: number,
+  init: ResponseInit = {},
+): Response {
+  const stream = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(new TextEncoder().encode(firstChunk));
+      await new Promise((resolve) => setTimeout(resolve, stallMs));
+      controller.enqueue(new TextEncoder().encode(secondChunk));
+      controller.close();
+    },
+  });
+  return new Response(stream, init);
 }
 
 const GOOD_ROBOTS = [
@@ -76,9 +94,12 @@ describe("runScan", () => {
     }
     expect(result.score).toBe(100);
     expect(result.grade).toBe("A");
+    for (const category of result.categories) {
+      expect(category.score).toBe(100);
+    }
   });
 
-  test("fully missing: no agent-visibility signals present, every check fails", async () => {
+  test("fully missing: no agent-visibility signals present, every check fails, and category scores reflect that (not just the composite)", async () => {
     const server = startFixtureServer({
       "/": () =>
         textResponse("<html><body>Hello human</body></html>", {
@@ -94,6 +115,10 @@ describe("runScan", () => {
     // markdown-negotiation is the only error-tier check in this batch, and it fails here.
     expect(result.score).toBe(0);
     expect(result.grade).toBe("F");
+    // every category is 100% failing here -- none should report a passing score.
+    for (const category of result.categories) {
+      expect(category.score).toBe(0);
+    }
   });
 
   test("malformed response: garbled robots.txt fails gracefully instead of crashing the scan", async () => {
@@ -132,7 +157,7 @@ describe("runScan", () => {
     }
   });
 
-  test("unreachable target: a hanging response is aborted by the timeout, not left to hang forever", async () => {
+  test("unreachable target: headers that never arrive are aborted by the timeout, not left to hang forever", async () => {
     const server = startFixtureServer({
       "/": async () => {
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -149,6 +174,23 @@ describe("runScan", () => {
       (c) => c.id === "markdown-negotiation",
     );
     expect(markdownCheck?.passed).toBe(false);
+  });
+
+  test("unreachable target: a body that stalls after headers arrive is also aborted by the timeout", async () => {
+    // headers resolve immediately, but the body stream stalls for 2s -- this
+    // is the case a header-only timeout would miss (see fetch-text.ts).
+    const server = startFixtureServer({
+      "/robots.txt": () =>
+        stalledBodyResponse("User-agent: *\n", "Disallow:\n", 2000),
+    });
+
+    const start = Date.now();
+    const result = await runScan(server.url.href, { timeoutMs: 50 });
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(1500);
+    const robotsCheck = result.checks.find((c) => c.id === "robots-txt");
+    expect(robotsCheck?.passed).toBe(false);
   });
 
   test("content negotiation edge case: a server that ignores Accept and always returns HTML must fail, not false-positive", async () => {
@@ -170,7 +212,7 @@ describe("runScan", () => {
     expect(markdownCheck?.passed).toBe(false);
   });
 
-  test("scoring boundary: only warning/notice-tier checks fail, the error-tier check passes, score stays top-band", async () => {
+  test("scoring boundary: only warning/notice-tier checks fail, the error-tier check passes, composite score stays top-band while the failing category does not", async () => {
     const server = startFixtureServer({
       // robots.txt, sitemap, llms.txt all 404 (default handler) -> warning/notice checks fail
       "/": markdownAwareHomepage, // markdown-negotiation (the only error-tier check) passes
@@ -184,5 +226,44 @@ describe("runScan", () => {
     expect(passing.length).toBeGreaterThan(0);
     expect(result.score).toBe(100);
     expect(result.grade).toBe("A");
+
+    // the composite score is deliberately lenient (only error-tier counts),
+    // but a category made entirely of failing warning/notice checks must
+    // not itself read as a perfect 100 -- that would mislead the report.
+    const findCategory = result.categories.find(
+      (c) => c.category === "can-agents-find-you",
+    );
+    expect(findCategory?.checks.every((c) => !c.passed)).toBe(true);
+    expect(findCategory?.score).toBe(0);
+  });
+
+  test("rejects non-http(s) schemes with a clean error instead of attempting to scan them", async () => {
+    await expect(runScan("file:///etc/passwd")).rejects.toThrow(/http/i);
+  });
+});
+
+describe("runChecks", () => {
+  test("a check that throws is isolated: the scan still returns a result for it instead of crashing", async () => {
+    const throwingCheck: Check = {
+      id: "boom",
+      title: "Boom",
+      category: "test",
+      severityTier: "notice",
+      async run() {
+        throw new Error("kaboom");
+      },
+    };
+    const ctx: CheckContext = {
+      baseUrl: new URL("http://example.com"),
+      fetchImpl: fetch,
+      timeoutMs: 1000,
+      robotsTxt: null,
+    };
+
+    const results = await runChecks([throwingCheck], ctx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.passed).toBe(false);
+    expect(results[0]?.evidence).toContain("crashed");
   });
 });

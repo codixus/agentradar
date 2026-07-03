@@ -1,8 +1,17 @@
 export type SeverityTier = "error" | "warning" | "notice";
 
+export interface TextFetchResult {
+  ok: boolean;
+  status: number;
+  contentType: string;
+  body: string;
+}
+
 export interface CheckContext {
   baseUrl: URL;
   fetchImpl: typeof fetch;
+  timeoutMs: number;
+  robotsTxt: TextFetchResult | null;
 }
 
 export interface CheckResult {

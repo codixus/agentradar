@@ -122,4 +122,23 @@ describe("agentsight CLI", () => {
     expect(Array.isArray(parsed.checks)).toBe(true);
     expect(typeof parsed.score).toBe("number");
   });
+
+  test("human report shows the real evidence fetched from the target, not a generic description", async () => {
+    const server = startAgentReadyFixture();
+    const console_ = captureConsole();
+    const code = await main(["scan", server.url.href]);
+    console_.restore();
+    expect(code).toBe(0);
+    const output = console_.logs.join("\n");
+    // the actual Content-Signal line the fixture served, not a paraphrase of it
+    expect(output).toContain("Content-Signal: search=yes");
+  });
+
+  test("scan with a non-http(s) URL reports a clean error, not a crash", async () => {
+    const console_ = captureConsole();
+    const code = await main(["scan", "file:///etc/passwd"]);
+    console_.restore();
+    expect(code).toBe(1);
+    expect(console_.errors.join("\n")).toContain("Scan failed");
+  });
 });

@@ -1,5 +1,5 @@
 export type { RunScanOptions } from "./scan.ts";
-export { runScan } from "./scan.ts";
+export { runChecks, runScan } from "./scan.ts";
 export { computeScore } from "./scoring.ts";
 export type {
   CategoryResult,
@@ -9,4 +9,5 @@ export type {
   CheckResult,
   ScanResult,
   SeverityTier,
+  TextFetchResult,
 } from "./types.ts";

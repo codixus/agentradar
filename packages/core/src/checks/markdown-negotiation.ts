@@ -9,13 +9,18 @@ const meta: CheckMeta = {
 };
 
 async function run(ctx: CheckContext): Promise<CheckResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
   let res: Response;
   try {
     res = await ctx.fetchImpl(ctx.baseUrl, {
       headers: { accept: "text/markdown, text/html;q=0.8" },
+      signal: controller.signal,
     });
   } catch {
     return fail(meta, `could not reach ${ctx.baseUrl.href}`);
+  } finally {
+    clearTimeout(timer);
   }
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.toLowerCase().startsWith("text/markdown")) {

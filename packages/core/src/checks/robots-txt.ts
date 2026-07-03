@@ -1,5 +1,4 @@
 import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
-import { fetchText } from "./fetch-text.ts";
 import { fail, pass } from "./util.ts";
 
 const meta: CheckMeta = {
@@ -9,8 +8,11 @@ const meta: CheckMeta = {
   severityTier: "warning",
 };
 
+// robots.txt is fetched once per scan (see scan.ts) and shared via
+// ctx.robotsTxt with ai-bot-rules and content-signals, instead of each
+// check fetching it independently.
 async function run(ctx: CheckContext): Promise<CheckResult> {
-  const result = await fetchText(ctx, "/robots.txt");
+  const result = ctx.robotsTxt;
   if (!result) {
     return fail(
       meta,

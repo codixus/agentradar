@@ -1,40 +1,41 @@
-import type { CheckContext } from "../types.ts";
+import type { CheckContext, TextFetchResult } from "../types.ts";
 
-export interface TextFetchResult {
-  ok: boolean;
-  status: number;
-  contentType: string;
-  body: string;
-}
+type FetchContext = Pick<CheckContext, "baseUrl" | "fetchImpl" | "timeoutMs">;
 
-// Fetches a path as text, normalizing both HTTP-level failures (4xx/5xx) and
-// network-level failures (unreachable host, timeout) into the same shape, so
-// every check can handle "could not get a usable body" one way.
+// The abort timer stays alive across the full fetch-then-read-body sequence
+// (cleared only in `finally`, after `.text()` settles) so a target that sends
+// headers immediately but stalls the body is still bounded by timeoutMs.
 export async function fetchText(
-  ctx: CheckContext,
+  ctx: FetchContext,
   path: string,
   init?: RequestInit,
 ): Promise<TextFetchResult | null> {
   const target = new URL(path, ctx.baseUrl);
-  let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
   try {
-    res = await ctx.fetchImpl(target, init);
-  } catch {
-    return null;
-  }
-  if (!res.ok) {
+    const res = await ctx.fetchImpl(target, {
+      ...init,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        contentType: res.headers.get("content-type") ?? "",
+        body: "",
+      };
+    }
+    const body = await res.text();
     return {
-      ok: false,
+      ok: true,
       status: res.status,
       contentType: res.headers.get("content-type") ?? "",
-      body: "",
+      body,
     };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
-  const body = await res.text();
-  return {
-    ok: true,
-    status: res.status,
-    contentType: res.headers.get("content-type") ?? "",
-    body,
-  };
 }
