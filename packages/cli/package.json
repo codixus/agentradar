@@ -1,0 +1,16 @@
+{
+  "name": "agentsight",
+  "version": "0.0.0",
+  "description": "CLI to check whether a site is visible and usable to AI agents.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentsight": "./src/index.ts"
+  },
+  "dependencies": {
+    "agentsight-core": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
