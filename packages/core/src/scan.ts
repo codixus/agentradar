@@ -1,10 +1,24 @@
+import { a2aAgentCardCheck } from "./checks/a2a-agent-card.ts";
+import { agentSkillsCheck } from "./checks/agent-skills.ts";
 import { aiBotRulesCheck } from "./checks/ai-bot-rules.ts";
+import { apiCatalogCheck } from "./checks/api-catalog.ts";
+import { authMdCheck } from "./checks/auth-md.ts";
 import { contentSignalsCheck } from "./checks/content-signals.ts";
+import { deepLinkAssociationCheck } from "./checks/deep-link-association.ts";
+import { dnsAidCheck } from "./checks/dns-aid.ts";
 import { fetchText } from "./checks/fetch-text.ts";
+import { linkHeadersCheck } from "./checks/link-headers.ts";
 import { llmsTxtCheck } from "./checks/llms-txt.ts";
 import { markdownNegotiationCheck } from "./checks/markdown-negotiation.ts";
+import { mcpServerCardCheck } from "./checks/mcp-server-card.ts";
+import { mppCheck } from "./checks/mpp.ts";
+import { oauthDiscoveryCheck } from "./checks/oauth-discovery.ts";
+import { oauthProtectedResourceCheck } from "./checks/oauth-protected-resource.ts";
 import { robotsTxtCheck } from "./checks/robots-txt.ts";
 import { sitemapCheck } from "./checks/sitemap.ts";
+import { ucpCheck } from "./checks/ucp.ts";
+import { webBotAuthCheck } from "./checks/web-bot-auth.ts";
+import { x402Check } from "./checks/x402.ts";
 import { computeScore } from "./scoring.ts";
 import type {
   CategoryResult,
@@ -15,12 +29,30 @@ import type {
 } from "./types.ts";
 
 const ALL_CHECKS: Check[] = [
+  // can-agents-find-you
   robotsTxtCheck,
   aiBotRulesCheck,
   sitemapCheck,
+  linkHeadersCheck,
+  dnsAidCheck,
+  // can-agents-read-you
   llmsTxtCheck,
   markdownNegotiationCheck,
   contentSignalsCheck,
+  // can-agents-reach-your-app
+  deepLinkAssociationCheck,
+  // can-agents-trust-you
+  apiCatalogCheck,
+  oauthDiscoveryCheck,
+  oauthProtectedResourceCheck,
+  authMdCheck,
+  mcpServerCardCheck,
+  a2aAgentCardCheck,
+  agentSkillsCheck,
+  ucpCheck,
+  x402Check,
+  webBotAuthCheck,
+  mppCheck,
 ];
 
 export interface RunScanOptions {
