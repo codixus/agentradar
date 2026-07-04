@@ -33,10 +33,10 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     "service-desc",
     "service-doc",
   ];
-  const relMatch = new RegExp(
-    `rel\\s*=\\s*"?(${AGENT_USEFUL_RELS.join("|")})"?`,
-    "i",
+  const escaped = AGENT_USEFUL_RELS.map((rel) =>
+    rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
   );
+  const relMatch = new RegExp(`rel\\s*=\\s*"?(${escaped.join("|")})"?`, "i");
   if (!relMatch.test(linkHeader)) {
     return fail(
       meta,
