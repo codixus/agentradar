@@ -113,12 +113,13 @@ export async function runChecks(
 }
 
 // packages/core trusts its input: it is the engine behind a CLI where the
-// caller picks their own scan target, the same trust model as curl. A
-// caller that accepts a URL from someone else it does not control (e.g. a
-// future web-hosted scan endpoint) is responsible for its own SSRF
-// hardening -- private/internal-IP filtering, redirect caps, response-size
-// caps -- before calling runScan; this function only rejects unscannable
-// schemes and bounds each request by timeoutMs.
+// caller picks their own scan target, the same trust model as curl. Every
+// outbound request is bounded by timeoutMs, a redirect cap, and a response
+// body-size cap (see checks/http.ts and fetch-raw.ts) as defense-in-depth,
+// and unscannable schemes are rejected here. A caller that accepts a URL from
+// someone it does not control (e.g. a future web-hosted scan endpoint) is
+// still responsible for its own SSRF hardening -- private/internal-IP and
+// DNS-rebinding filtering -- before calling runScan.
 export async function runScan(
   url: string,
   options: RunScanOptions = {},

@@ -1,5 +1,6 @@
 import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
 import { fetchRaw } from "./fetch-raw.ts";
+import { readCappedText } from "./http.ts";
 import { fail, pass } from "./util.ts";
 
 const meta: CheckMeta = {
@@ -34,7 +35,12 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   if (!res.ok) {
     return fail(meta, `DNS-over-HTTPS query returned ${res.status}`);
   }
-  const data = (await res.json().catch(() => null)) as DohResponse | null;
+  let data: DohResponse | null;
+  try {
+    data = JSON.parse(await readCappedText(res)) as DohResponse;
+  } catch {
+    data = null;
+  }
   if (data === null) {
     return fail(meta, "DNS-over-HTTPS query returned an unparseable response");
   }

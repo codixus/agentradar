@@ -1,10 +1,14 @@
 import type { CheckContext, TextFetchResult } from "../types.ts";
+import { followRedirects } from "./fetch-raw.ts";
+import { readCappedText } from "./http.ts";
 
 type FetchContext = Pick<CheckContext, "baseUrl" | "fetchImpl" | "timeoutMs">;
 
-// The abort timer stays alive across the full fetch-then-read-body sequence
-// (cleared only in `finally`, after `.text()` settles) so a target that sends
-// headers immediately but stalls the body is still bounded by timeoutMs.
+// The abort timer stays alive across the full follow-redirects-then-read-body
+// sequence (cleared only in `finally`, after readCappedText settles) so a
+// target that sends headers immediately but stalls the body is still bounded by
+// timeoutMs. The body itself is size-capped (readCappedText) and redirects are
+// capped (followRedirects), so no outbound read is unbounded in bytes or hops.
 export async function fetchText(
   ctx: FetchContext,
   path: string,
@@ -14,25 +18,20 @@ export async function fetchText(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
   try {
-    const res = await ctx.fetchImpl(target, {
-      ...init,
-      signal: controller.signal,
-    });
+    const res = await followRedirects(
+      ctx.fetchImpl,
+      target,
+      init,
+      controller.signal,
+    );
+    if (!res) return null;
+    const contentType = res.headers.get("content-type") ?? "";
     if (!res.ok) {
-      return {
-        ok: false,
-        status: res.status,
-        contentType: res.headers.get("content-type") ?? "",
-        body: "",
-      };
+      await res.body?.cancel().catch(() => {});
+      return { ok: false, status: res.status, contentType, body: "" };
     }
-    const body = await res.text();
-    return {
-      ok: true,
-      status: res.status,
-      contentType: res.headers.get("content-type") ?? "",
-      body,
-    };
+    const body = await readCappedText(res);
+    return { ok: true, status: res.status, contentType, body };
   } catch {
     return null;
   } finally {
