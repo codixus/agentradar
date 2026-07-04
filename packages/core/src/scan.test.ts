@@ -692,6 +692,75 @@ describe("runScan", () => {
   });
 });
 
+describe("audit trail (R3/R4)", () => {
+  test("R4: every check carries a goal and resources copied from its meta", async () => {
+    const server = startFixtureServer(FULLY_AGENT_READY_ROUTES);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: true }),
+    });
+
+    for (const check of result.checks) {
+      expect(typeof check.goal).toBe("string");
+      expect((check.goal ?? "").length).toBeGreaterThan(0);
+      expect(Array.isArray(check.resources)).toBe(true);
+      expect((check.resources ?? []).length).toBeGreaterThan(0);
+      for (const resource of check.resources ?? []) {
+        expect(resource.url).toMatch(/^https?:\/\//);
+        expect(resource.label.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("R4: a non-inferred failure sets a one-line issue; inferred checks do not", async () => {
+    const server = startFixtureServer(FULLY_AGENT_READY_ROUTES);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: true }),
+    });
+
+    // x402 cannot pass on a markdown-serving root -> a real (non-inferred) fail.
+    const x402 = result.checks.find((c) => c.id === "x402");
+    expect(x402?.passed).toBe(false);
+    expect((x402?.issue ?? "").length).toBeGreaterThan(0);
+
+    // mpp is inferred -> no issue even though it "fails".
+    const mpp = result.checks.find((c) => c.id === "mpp");
+    expect(mpp?.inferred).toBe(true);
+    expect(mpp?.issue).toBeUndefined();
+  });
+
+  test("R3: probes leave a transcript; robots-derived and no-probe checks behave as expected", async () => {
+    const server = startFixtureServer(FULLY_AGENT_READY_ROUTES);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: true }),
+    });
+
+    const transcriptOf = (id: string) =>
+      result.checks.find((c) => c.id === id)?.transcript ?? [];
+
+    // robots-txt reports the shared prefetch's steps.
+    expect(transcriptOf("robots-txt").length).toBeGreaterThan(0);
+    // markdown-negotiation probes the site root.
+    expect(transcriptOf("markdown-negotiation").length).toBeGreaterThan(0);
+    // a well-known JSON check (api-catalog) probes its path.
+    expect(transcriptOf("api-catalog").length).toBeGreaterThan(0);
+    // deep-link association fires two parallel probes -> two steps.
+    expect(transcriptOf("deep-link-association")).toHaveLength(2);
+
+    // every recorded step is well-formed.
+    for (const step of transcriptOf("markdown-negotiation")) {
+      expect(typeof step.method).toBe("string");
+      expect(step.url).toMatch(/^https?:\/\//);
+      expect(step.status === null || typeof step.status === "number").toBe(
+        true,
+      );
+    }
+
+    // mpp makes no probe, so it has no transcript to show.
+    const mpp = result.checks.find((c) => c.id === "mpp");
+    expect(mpp?.transcript ?? []).toHaveLength(0);
+  });
+});
+
 describe("runChecks", () => {
   test("a check that throws is isolated: the scan still returns a result for it instead of crashing", async () => {
     const throwingCheck: Check = {
@@ -699,6 +768,7 @@ describe("runChecks", () => {
       title: "Boom",
       category: "test",
       severityTier: "notice",
+      goal: "Never throw.",
       async run() {
         throw new Error("kaboom");
       },

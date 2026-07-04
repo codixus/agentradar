@@ -149,6 +149,27 @@ describe("agentradar CLI", () => {
     expect(typeof parsed.score).toBe("number");
   });
 
+  test("scan --json carries the audit-trail fields (goal, resources, transcript) verbatim", async () => {
+    const server = startAgentReadyFixture();
+    const console_ = captureConsole();
+    const code = await main(["scan", server.url.href, "--json"], {
+      fetchImpl: createNoNetworkFetch(),
+    });
+    console_.restore();
+    expect(code).toBe(0);
+    const parsed = JSON.parse(console_.logs.join("\n"));
+    // goal + resources are on every check (copied from the meta).
+    for (const check of parsed.checks) {
+      expect(typeof check.goal).toBe("string");
+      expect(Array.isArray(check.resources)).toBe(true);
+    }
+    // at least one check actually probed the target and recorded a transcript.
+    const withTranscript = parsed.checks.filter(
+      (c: { transcript?: unknown[] }) => (c.transcript?.length ?? 0) > 0,
+    );
+    expect(withTranscript.length).toBeGreaterThan(0);
+  });
+
   test("human report shows the real evidence fetched from the target, not a generic description", async () => {
     const server = startAgentReadyFixture();
     const console_ = captureConsole();

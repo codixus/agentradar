@@ -6,6 +6,8 @@ const meta: CheckMeta = {
   title: "A2A Agent Card",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Publish an A2A agent card so other agents can discover and call yours.",
+  resources: [{ label: "A2A Protocol", url: "https://a2a-protocol.org" }],
 };
 
 export const a2aAgentCardCheck: Check = createWellKnownJsonCheck({
@@ -22,4 +24,5 @@ export const a2aAgentCardCheck: Check = createWellKnownJsonCheck({
     return { ok: true };
   },
   fixHint: "Publish an A2A Agent Card at /.well-known/agent-card.json.",
+  issue: "No A2A Agent Card is published at /.well-known/agent-card.json.",
 });

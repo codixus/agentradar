@@ -6,6 +6,13 @@ const meta: CheckMeta = {
   title: "MCP Server Card",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Advertise your MCP server with a discoverable server card so agents can connect.",
+  resources: [
+    {
+      label: "Model Context Protocol",
+      url: "https://modelcontextprotocol.io",
+    },
+  ],
 };
 
 // SEP-2127, Draft/Extensions Track: the well-known path has moved across
@@ -26,4 +33,6 @@ export const mcpServerCardCheck: Check = createWellKnownJsonCheck({
   },
   fixHint:
     "Publish an MCP Server Card at /.well-known/mcp/server-card.json (spec is Draft, re-verify the path before relying on this).",
+  issue:
+    "No MCP Server Card is published at /.well-known/mcp/server-card.json.",
 });

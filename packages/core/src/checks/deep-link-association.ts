@@ -1,4 +1,10 @@
-import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
+import type {
+  Check,
+  CheckContext,
+  CheckMeta,
+  CheckResult,
+  HttpStep,
+} from "../types.ts";
 import { fetchText } from "./fetch-text.ts";
 import { fail, pass } from "./util.ts";
 
@@ -7,6 +13,17 @@ const meta: CheckMeta = {
   title: "App deep-link association",
   category: "can-agents-reach-your-app",
   severityTier: "notice",
+  goal: "Let mobile agents deep-link into your app with association files for iOS and Android.",
+  resources: [
+    {
+      label: "Apple Universal Links",
+      url: "https://developer.apple.com/documentation/xcode/supporting-associated-domains",
+    },
+    {
+      label: "Android App Links",
+      url: "https://developer.android.com/training/app-links/verify-android-applinks",
+    },
+  ],
 };
 
 function looksLikeAppleAppSiteAssociation(body: string): boolean {
@@ -37,10 +54,18 @@ function looksLikeAssetLinks(body: string): boolean {
 // from every generic site checker in the competitive landscape (research
 // notes section 3).
 async function run(ctx: CheckContext): Promise<CheckResult> {
+  const appleSteps: HttpStep[] = [];
+  const androidSteps: HttpStep[] = [];
   const [appleResult, androidResult] = await Promise.all([
-    fetchText(ctx, "/.well-known/apple-app-site-association"),
-    fetchText(ctx, "/.well-known/assetlinks.json"),
+    fetchText(
+      ctx,
+      "/.well-known/apple-app-site-association",
+      undefined,
+      appleSteps,
+    ),
+    fetchText(ctx, "/.well-known/assetlinks.json", undefined, androidSteps),
   ]);
+  const transcript = [...appleSteps, ...androidSteps];
 
   const appleValid =
     !!appleResult?.ok && looksLikeAppleAppSiteAssociation(appleResult.body);
@@ -48,17 +73,21 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     !!androidResult?.ok && looksLikeAssetLinks(androidResult.body);
 
   if (!appleValid && !androidValid) {
-    return fail(
-      meta,
-      "no valid apple-app-site-association or assetlinks.json found",
-      "Publish /.well-known/apple-app-site-association (Universal Links) and/or /.well-known/assetlinks.json (Android App Links) if you have a companion app.",
-    );
+    return {
+      ...fail(
+        meta,
+        "no valid apple-app-site-association or assetlinks.json found",
+        "Publish /.well-known/apple-app-site-association (Universal Links) and/or /.well-known/assetlinks.json (Android App Links) if you have a companion app.",
+        "No valid app deep-link association file is published.",
+      ),
+      transcript,
+    };
   }
 
   const found: string[] = [];
   if (appleValid) found.push("apple-app-site-association");
   if (androidValid) found.push("assetlinks.json");
-  return pass(meta, `found: ${found.join(", ")}`);
+  return { ...pass(meta, `found: ${found.join(", ")}`), transcript };
 }
 
 export const deepLinkAssociationCheck: Check = { ...meta, run };

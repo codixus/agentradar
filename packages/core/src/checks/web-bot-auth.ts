@@ -6,6 +6,10 @@ const meta: CheckMeta = {
   title: "Web Bot Auth",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Publish a signing-key directory so agents can prove which bot they are.",
+  resources: [
+    { label: "RFC 9421", url: "https://www.rfc-editor.org/rfc/rfc9421" },
+  ],
 };
 
 const keyDirectoryCheck = createWellKnownJsonCheck({
