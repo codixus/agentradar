@@ -334,6 +334,44 @@ describe("runScan", () => {
     expect(markdownCheck?.passed).toBe(false);
   });
 
+  test("link headers: service-desc/service-doc alone (no api-catalog or describedby) still passes, matching a real Cloudflare Link header shape", async () => {
+    const server = startFixtureServer({
+      "/": () =>
+        textResponse("<html></html>", {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            link: '<https://example.com/openapi.json>; rel="service-desc", <https://example.com/llms.txt>; rel="service-doc"',
+          },
+        }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    expect(result.checks.find((c) => c.id === "link-headers")?.passed).toBe(
+      true,
+    );
+  });
+
+  test("AI bot rules: matches Claude-Web and cohere-ai, not just the more common tokens", async () => {
+    const server = startFixtureServer({
+      "/robots.txt": () =>
+        textResponse(
+          "User-agent: Claude-Web\nAllow: /\n\nUser-agent: cohere-ai\nAllow: /\n",
+        ),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const aiBotRules = result.checks.find((c) => c.id === "ai-bot-rules");
+    expect(aiBotRules?.passed).toBe(true);
+    expect(aiBotRules?.evidence).toContain("Claude-Web");
+    expect(aiBotRules?.evidence).toContain("cohere-ai");
+  });
+
   test("scoring boundary: only warning/notice-tier checks fail, the error-tier check passes, composite score stays top-band while the failing category does not", async () => {
     const server = startFixtureServer({
       // robots.txt, sitemap, llms.txt, link headers all absent (default 404,
