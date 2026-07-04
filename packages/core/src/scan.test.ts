@@ -183,8 +183,10 @@ describe("runScan", () => {
     expect(mppResult?.passed).toBe(false);
     expect(mppResult?.inferred).toBe(true);
 
-    // every scored (error + warning) check passes here, so the composite is 100
-    expect(result.score).toBe(100);
+    // every verifiable check passes here except x402 (one notice-tier check
+    // that cannot pass on a markdown-serving root), so the composite is 96/A:
+    // 26 of 27 total weight under the error 4 / warning 2 / notice 1 model.
+    expect(result.score).toBe(96);
     expect(result.grade).toBe("A");
 
     const findYou = result.categories.find(
@@ -396,10 +398,10 @@ describe("runScan", () => {
 
     const markdown = result.checks.find((c) => c.id === "markdown-negotiation");
     expect(markdown?.passed).toBe(true);
-    // one passing error-tier check (weight 2) against six failing warning-tier
-    // checks (weight 1 each) -> 2/8 -> 25. The old error-tier-only model
-    // reported a misleading 100/A for exactly this shape.
-    expect(result.score).toBe(25);
+    // one passing error-tier check (weight 4) against six failing warning-tier
+    // checks and eleven failing notice-tier checks -> 4/27 -> 15. The old
+    // error-tier-only model reported a misleading 100/A for exactly this shape.
+    expect(result.score).toBe(15);
     expect(result.grade).toBe("F");
 
     // and the fully-failing category must still read 0, not a perfect 100.
