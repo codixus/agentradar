@@ -1,6 +1,6 @@
 {
   "name": "agentradar-core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "AI-agent visibility scan engine behind the agentradar CLI. Bun-native (ships TypeScript source).",
   "keywords": [
     "ai-agents",
