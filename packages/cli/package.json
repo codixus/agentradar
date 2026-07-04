@@ -34,5 +34,8 @@
     "typecheck": "tsc --noEmit",
     "build": "bun build ./src/cli.ts --target=node --outfile ./dist/index.js",
     "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "agentradar-core": "workspace:*"
   }
 }

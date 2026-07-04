@@ -16,6 +16,9 @@
       "bin": {
         "agentradar": "dist/index.js",
       },
+      "devDependencies": {
+        "agentradar-core": "workspace:*",
+      },
     },
     "packages/core": {
       "name": "agentradar-core",
