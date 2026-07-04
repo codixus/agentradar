@@ -8,6 +8,7 @@ export const AI_BOT_TOKENS = [
   "ClaudeBot",
   "anthropic-ai",
   "Claude-User",
+  "Claude-Web",
   "Claude-SearchBot",
   "PerplexityBot",
   "Perplexity-User",
@@ -16,4 +17,6 @@ export const AI_BOT_TOKENS = [
   "Bytespider",
   "Applebot-Extended",
   "Amazonbot",
+  "cohere-ai",
+  "Cohere-Training-Data-Crawler",
 ] as const;

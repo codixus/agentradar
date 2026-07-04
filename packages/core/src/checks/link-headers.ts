@@ -22,10 +22,22 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
       'Add a Link header, e.g. Link: </llms.txt>; rel="describedby"',
     );
   }
-  if (
-    !/rel\s*=\s*"?api-catalog"?/i.test(linkHeader) &&
-    !/rel\s*=\s*"?describedby"?/i.test(linkHeader)
-  ) {
+  // Agent-useful rel values: api-catalog (RFC 9727), describedby (the
+  // mt-agent-discovery pattern for pointing at llms.txt), and service-desc /
+  // service-doc (RFC 8631, commonly used to point at an OpenAPI spec /
+  // documentation -- confirmed against a real Cloudflare-published Link
+  // header, which uses these two alongside api-catalog).
+  const AGENT_USEFUL_RELS = [
+    "api-catalog",
+    "describedby",
+    "service-desc",
+    "service-doc",
+  ];
+  const relMatch = new RegExp(
+    `rel\\s*=\\s*"?(${AGENT_USEFUL_RELS.join("|")})"?`,
+    "i",
+  );
+  if (!relMatch.test(linkHeader)) {
     return fail(
       meta,
       `Link header found but has no recognized rel value: ${linkHeader}`,
