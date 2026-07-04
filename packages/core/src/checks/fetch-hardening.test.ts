@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CheckContext } from "../types.ts";
 import { fetchRaw } from "./fetch-raw.ts";
 import { fetchText } from "./fetch-text.ts";
-import { MAX_REDIRECTS, readCappedText } from "./http.ts";
+import { MAX_BODY_BYTES, MAX_REDIRECTS, readCappedText } from "./http.ts";
 import { markdownNegotiationCheck } from "./markdown-negotiation.ts";
 
 let activeServer: ReturnType<typeof Bun.serve> | null = null;
@@ -47,6 +47,10 @@ function startFixtureServer() {
       }
       if (p === "/rel-final")
         return new Response("rel arrived", { status: 200 });
+      if (p === "/big") {
+        // a body larger than the default MAX_BODY_BYTES cap
+        return new Response("a".repeat(MAX_BODY_BYTES + 1000), { status: 200 });
+      }
       if (p === "/no-location") return new Response(null, { status: 302 });
       if (p === "/not-modified") return new Response(null, { status: 304 });
       if (p === "/plain") return new Response("plain-ok", { status: 200 });
@@ -161,6 +165,13 @@ describe("fetchText over the redirect cap (R1/R3)", () => {
       `/chain/${MAX_REDIRECTS + 1}`,
     );
     expect(res).toBeNull();
+  });
+
+  test("a body larger than the default cap is truncated to MAX_BODY_BYTES (the default is actually wired in, not just readCappedText)", async () => {
+    const server = startFixtureServer();
+    const res = await fetchText(textCtx(server.url), "/big");
+    expect(res?.ok).toBe(true);
+    expect(res?.body.length).toBe(MAX_BODY_BYTES);
   });
 });
 
