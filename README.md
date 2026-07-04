@@ -4,8 +4,6 @@ AgentRadar checks whether a site (and, for app builders, the underlying product)
 
 It is deliberately narrow. AgentRadar does **not** check general site health, performance, or SEO - there are already good tools for that (Lighthouse, PageSpeed Insights, SSL Labs). Every check here answers one question: **can an AI agent discover, read, or use this?**
 
-> Status: ready for its first npm release as `agentradar`.
-
 ## Usage
 
 ```sh
