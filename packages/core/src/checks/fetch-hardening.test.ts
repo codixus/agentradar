@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CheckContext, HttpStep } from "../types.ts";
 import { fetchRaw } from "./fetch-raw.ts";
 import { fetchText } from "./fetch-text.ts";
-import { MAX_BODY_BYTES, MAX_REDIRECTS, readCappedText } from "./http.ts";
+import {
+  MAX_BODY_BYTES,
+  MAX_REDIRECTS,
+  OUTBOUND_USER_AGENT,
+  readCappedText,
+} from "./http.ts";
 import { markdownNegotiationCheck } from "./markdown-negotiation.ts";
 
 let activeServer: ReturnType<typeof Bun.serve> | null = null;
@@ -54,6 +59,11 @@ function startFixtureServer() {
       if (p === "/no-location") return new Response(null, { status: 302 });
       if (p === "/not-modified") return new Response(null, { status: 304 });
       if (p === "/plain") return new Response("plain-ok", { status: 200 });
+      if (p === "/echo-ua") {
+        return new Response(req.headers.get("user-agent") ?? "", {
+          status: 200,
+        });
+      }
       if (p === "/md-redirect") {
         return new Response(null, {
           status: 302,
@@ -295,5 +305,22 @@ describe("transcript recording (R3)", () => {
     );
     expect(res).toBeNull();
     expect(steps[0]?.status).toBeNull();
+  });
+});
+
+describe("outbound identity (User-Agent)", () => {
+  test("every outbound request carries the agentradar User-Agent by default", async () => {
+    const server = startFixtureServer();
+    const res = await fetchText(textCtx(server.url), "/echo-ua");
+    expect(res?.body).toMatch(/^agentradar\/\d+\.\d+\.\d+ \(\+https:\/\//);
+    expect(res?.body).toBe(OUTBOUND_USER_AGENT);
+  });
+
+  test("a caller-provided User-Agent is not overwritten", async () => {
+    const server = startFixtureServer();
+    const res = await fetchText(textCtx(server.url), "/echo-ua", {
+      headers: { "user-agent": "custom-agent/1.0" },
+    });
+    expect(res?.body).toBe("custom-agent/1.0");
   });
 });

@@ -3,6 +3,16 @@
 All notable changes to `agentradar` and `agentradar-core` are documented here.
 The two packages are versioned in lockstep and follow semantic versioning.
 
+## 0.2.1
+
+### Changed
+
+- Every outbound probe now identifies itself with a
+  `agentradar/<version> (+https://github.com/codixus/agentradar)` User-Agent,
+  set centrally in the shared fetch layer. A caller-provided User-Agent still
+  wins. Scan etiquette: site owners can see who scanned them and where to
+  reach the project.
+
 ## 0.2.0 - 2026-07-04
 
 Scoring rebalance and a structured audit trail.

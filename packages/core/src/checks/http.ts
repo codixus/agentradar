@@ -7,6 +7,12 @@
 export const MAX_REDIRECTS = 5;
 export const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MiB
 
+// Scan etiquette and abuse-desk friendliness: every outbound probe identifies
+// itself, so site owners can see who scanned them and reach the project.
+// Kept in lockstep with the package version at release time.
+export const OUTBOUND_USER_AGENT =
+  "agentradar/0.2.1 (+https://github.com/codixus/agentradar)";
+
 // Reads a response body as text but stops once maxBytes have been consumed,
 // cancelling the stream instead of buffering an unbounded body via res.text().
 // A multibyte character straddling the truncation point may be clipped -- an

@@ -1,5 +1,5 @@
 import type { CheckContext, HttpStep } from "../types.ts";
-import { MAX_REDIRECTS } from "./http.ts";
+import { MAX_REDIRECTS, OUTBOUND_USER_AGENT } from "./http.ts";
 
 type FetchContext = Pick<CheckContext, "fetchImpl" | "timeoutMs">;
 
@@ -32,10 +32,20 @@ export async function followRedirects(
 ): Promise<Response | null> {
   let current = new URL(url);
   const method = (init?.method ?? "GET").toUpperCase();
+  // Identify every probe unless the caller deliberately overrides the UA.
+  const headers = new Headers(init?.headers);
+  if (!headers.has("user-agent")) {
+    headers.set("user-agent", OUTBOUND_USER_AGENT);
+  }
   for (let redirects = 0; ; redirects++) {
     let res: Response;
     try {
-      res = await fetchImpl(current, { ...init, redirect: "manual", signal });
+      res = await fetchImpl(current, {
+        ...init,
+        headers,
+        redirect: "manual",
+        signal,
+      });
     } catch (err) {
       steps?.push({
         method,
