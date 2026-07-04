@@ -11,18 +11,15 @@
       },
     },
     "packages/cli": {
-      "name": "agentsight",
-      "version": "0.0.0",
+      "name": "agentradar",
+      "version": "0.1.0",
       "bin": {
-        "agentsight": "./src/index.ts",
-      },
-      "dependencies": {
-        "agentsight-core": "workspace:*",
+        "agentradar": "dist/index.js",
       },
     },
     "packages/core": {
-      "name": "agentsight-core",
-      "version": "0.0.0",
+      "name": "agentradar-core",
+      "version": "0.1.0",
     },
   },
   "packages": {
@@ -48,9 +45,9 @@
 
     "@types/node": ["@types/node@26.1.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-O0A1G3xPGy4w7AgQdAQYUlQ+BKk2Oovw8eRpofyp5KdBZULnbe+WqaOVNrm705SHphCiG4XHsACrSmPu1f+Kgw=="],
 
-    "agentsight": ["agentsight@workspace:packages/cli"],
+    "agentradar": ["agentradar@workspace:packages/cli"],
 
-    "agentsight-core": ["agentsight-core@workspace:packages/core"],
+    "agentradar-core": ["agentradar-core@workspace:packages/core"],
 
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 

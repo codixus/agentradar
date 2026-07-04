@@ -1,16 +1,38 @@
 {
-  "name": "agentsight",
-  "version": "0.0.0",
+  "name": "agentradar",
+  "version": "0.1.0",
   "description": "CLI to check whether a site is visible and usable to AI agents.",
+  "keywords": [
+    "ai-agents",
+    "llm",
+    "agent-readiness",
+    "mcp",
+    "crawlers",
+    "llms-txt",
+    "robots-txt",
+    "seo",
+    "cli"
+  ],
   "license": "MIT",
   "type": "module",
   "bin": {
-    "agentsight": "./src/index.ts"
+    "agentradar": "dist/index.js"
   },
-  "dependencies": {
-    "agentsight-core": "workspace:*"
+  "files": ["dist"],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codixus/agentsight.git"
+  },
+  "homepage": "https://github.com/codixus/agentsight#readme",
+  "bugs": {
+    "url": "https://github.com/codixus/agentsight/issues"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "bun build ./src/cli.ts --target=node --outfile ./dist/index.js",
+    "prepublishOnly": "bun run build"
   }
 }

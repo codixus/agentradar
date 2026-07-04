@@ -101,7 +101,7 @@ const GOOD_SITEMAP =
   '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>';
 
 const GOOD_LLMS_TXT =
-  "# Example\n\n> A test site used for AgentSight fixtures.\n";
+  "# Example\n\n> A test site used for AgentRadar fixtures.\n";
 
 function markdownAwareHomepage(req: Request): Response {
   const accept = req.headers.get("accept") ?? "";

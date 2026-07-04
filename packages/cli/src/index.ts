@@ -1,12 +1,11 @@
-#!/usr/bin/env bun
-import type { CategoryResult, CheckResult, ScanResult } from "agentsight-core";
-import { runScan } from "agentsight-core";
+import type { CategoryResult, CheckResult, ScanResult } from "agentradar-core";
+import { runScan } from "agentradar-core";
 
 function printUsage(): void {
-  console.log("agentsight - AI-agent visibility scanner");
+  console.log("agentradar - AI-agent visibility scanner");
   console.log("");
   console.log("Usage:");
-  console.log("  agentsight scan <url> [--json]");
+  console.log("  agentradar scan <url> [--json]");
 }
 
 function categoryLabel(id: string): string {
@@ -34,7 +33,7 @@ function printCategory(category: CategoryResult): void {
 }
 
 function printReport(result: ScanResult): void {
-  console.log(`AgentSight scan: ${result.url}`);
+  console.log(`AgentRadar scan: ${result.url}`);
   console.log(`Grade: ${result.grade} (${result.score}/100)`);
   console.log("");
   for (const category of result.categories) {
@@ -62,7 +61,7 @@ async function runScanCommand(
   const parsed = parseTargetUrl(target);
   if (!parsed) {
     console.error(
-      `"${target}" is not a valid URL. Try: agentsight scan https://example.com`,
+      `"${target}" is not a valid URL. Try: agentradar scan https://example.com`,
     );
     return 1;
   }
@@ -98,7 +97,7 @@ export async function main(
 
   if (command === "scan") {
     if (!target) {
-      console.error("Usage: agentsight scan <url>");
+      console.error("Usage: agentradar scan <url>");
       return 1;
     }
     return runScanCommand(target, argv.includes("--json"), options);
@@ -107,8 +106,4 @@ export async function main(
   console.error(`Unknown command: ${command}`);
   printUsage();
   return 1;
-}
-
-if (import.meta.main) {
-  process.exit(await main(process.argv.slice(2)));
 }

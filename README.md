@@ -1,15 +1,17 @@
-# AgentSight
+# AgentRadar
 
-AgentSight checks whether a site (and, for app builders, the underlying product) is visible and usable to AI agents: LLM crawlers, shopping/browsing agents, and MCP clients.
+AgentRadar checks whether a site (and, for app builders, the underlying product) is visible and usable to AI agents: LLM crawlers, shopping/browsing agents, and MCP clients.
 
-It is deliberately narrow. AgentSight does **not** check general site health, performance, or SEO - there are already good tools for that (Lighthouse, PageSpeed Insights, SSL Labs). Every check here answers one question: **can an AI agent discover, read, or use this?**
+It is deliberately narrow. AgentRadar does **not** check general site health, performance, or SEO - there are already good tools for that (Lighthouse, PageSpeed Insights, SSL Labs). Every check here answers one question: **can an AI agent discover, read, or use this?**
 
-> Status: under active development, not yet published to npm.
+> Status: ready for its first npm release as `agentradar`.
 
 ## Usage
 
 ```sh
-npx agentsight scan <url>
+npx agentradar scan <url>
+# or, with Bun:
+bunx agentradar scan <url>
 ```
 
 Add `--json` for machine-readable output:
@@ -96,13 +98,19 @@ Checks marked *(inferred)* confirm only that a signal is published, not that the
 Bun workspace with two packages:
 
 - `packages/core` - the scan/rule engine (pure TypeScript, no framework dependencies)
-- `packages/cli` - the `agentsight` command
+- `packages/cli` - the `agentradar` command
 
 ```sh
 bun install
 bun run lint
 bun run typecheck
 bun test
+
+# run the CLI from source
+bun run packages/cli/src/cli.ts scan <url>
+
+# build the publishable, node-compatible bundle
+bun run --filter agentradar build
 ```
 
 ## License

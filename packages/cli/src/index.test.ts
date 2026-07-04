@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 // Intercepts DNS-AID's DNS-over-HTTPS lookup so these tests never make a
-// live call to cloudflare-dns.com, consistent with agentsight-core's own
+// live call to cloudflare-dns.com, consistent with agentradar-core's own
 // test suite.
 function createNoNetworkFetch(): typeof fetch {
   return (async (...args: Parameters<typeof fetch>) => {
@@ -87,13 +87,13 @@ function startAgentReadyFixture() {
   return server;
 }
 
-describe("agentsight CLI", () => {
+describe("agentradar CLI", () => {
   test("no arguments prints usage and exits 0", async () => {
     const console_ = captureConsole();
     const code = await main([]);
     console_.restore();
     expect(code).toBe(0);
-    expect(console_.logs.join("\n")).toContain("agentsight");
+    expect(console_.logs.join("\n")).toContain("agentradar");
   });
 
   test("scan with no url prints a usage error and exits 1", async () => {
@@ -102,7 +102,7 @@ describe("agentsight CLI", () => {
     console_.restore();
     expect(code).toBe(1);
     expect(console_.errors.join("\n")).toContain(
-      "Usage: agentsight scan <url>",
+      "Usage: agentradar scan <url>",
     );
   });
 

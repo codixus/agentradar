@@ -1,5 +1,5 @@
 {
-  "name": "agentsight-monorepo",
+  "name": "agentradar-monorepo",
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
