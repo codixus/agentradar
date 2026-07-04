@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { runChecks, runScan } from "./scan.ts";
-import type { Check, CheckContext } from "./types.ts";
+import { categoryScore, runChecks, runScan } from "./scan.ts";
+import type { Check, CheckContext, CheckResult } from "./types.ts";
 
 type RouteHandler = (req: Request) => Response | Promise<Response>;
 
@@ -29,6 +29,14 @@ function textResponse(body: string, init: ResponseInit = {}): Response {
   return new Response(body, { status: 200, ...init });
 }
 
+function jsonResponse(json: unknown, init: ResponseInit = {}): Response {
+  return new Response(JSON.stringify(json), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+}
+
 function stalledBodyResponse(
   firstChunk: string,
   secondChunk: string,
@@ -44,6 +52,39 @@ function stalledBodyResponse(
     },
   });
   return new Response(stream, init);
+}
+
+// Every scan.test.ts test routes through this instead of the bare default
+// fetch, so DNS-AID's DNS-over-HTTPS lookup (a real external host,
+// cloudflare-dns.com) never makes a live network call in CI -- it's
+// intercepted here with a canned answer, everything else is delegated to
+// the real fetch, which reaches the local Bun.serve fixture.
+function createTestFetch(
+  options: { dnsAidHasAnswer?: boolean } = {},
+): typeof fetch {
+  return (async (...args: Parameters<typeof fetch>) => {
+    const [input, init] = args;
+    const url =
+      input instanceof URL
+        ? input.href
+        : typeof input === "string"
+          ? input
+          : input.url;
+    if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+      const body = options.dnsAidHasAnswer
+        ? {
+            Answer: [
+              { name: "_index._agents.test", type: 64, data: "fake-svcb-data" },
+            ],
+          }
+        : {};
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return fetch(input, init);
+  }) as typeof fetch;
 }
 
 const GOOD_ROBOTS = [
@@ -64,39 +105,105 @@ const GOOD_LLMS_TXT =
 
 function markdownAwareHomepage(req: Request): Response {
   const accept = req.headers.get("accept") ?? "";
+  const linkHeader = { link: '</llms.txt>; rel="describedby"' };
   if (accept.includes("text/markdown")) {
     return textResponse("# Example\n\nHello agent.", {
-      headers: { "content-type": "text/markdown; charset=utf-8" },
+      headers: {
+        "content-type": "text/markdown; charset=utf-8",
+        ...linkHeader,
+      },
     });
   }
   return textResponse("<html><body>Hello human</body></html>", {
-    headers: { "content-type": "text/html; charset=utf-8" },
+    headers: { "content-type": "text/html; charset=utf-8", ...linkHeader },
   });
 }
 
+const FULLY_AGENT_READY_ROUTES: Record<string, RouteHandler> = {
+  "/robots.txt": () => textResponse(GOOD_ROBOTS),
+  "/sitemap.xml": () =>
+    textResponse(GOOD_SITEMAP, {
+      headers: { "content-type": "application/xml" },
+    }),
+  "/llms.txt": () => textResponse(GOOD_LLMS_TXT),
+  "/": markdownAwareHomepage,
+  "/.well-known/apple-app-site-association": () =>
+    jsonResponse({ applinks: { details: [] } }),
+  "/.well-known/assetlinks.json": () =>
+    jsonResponse([
+      { relation: ["delegate_permission/common.handle_all_urls"], target: {} },
+    ]),
+  "/.well-known/api-catalog": () =>
+    jsonResponse({
+      linkset: [{ anchor: "/", "service-desc": [{ href: "/openapi.json" }] }],
+    }),
+  "/.well-known/oauth-authorization-server": () =>
+    jsonResponse({
+      issuer: "https://example.com",
+      authorization_endpoint: "https://example.com/authorize",
+    }),
+  "/.well-known/oauth-protected-resource": () =>
+    jsonResponse({
+      resource: "https://example.com",
+      authorization_servers: ["https://example.com"],
+    }),
+  "/auth.md": () => textResponse("# Auth\n\nRegister via /register.\n"),
+  "/.well-known/mcp/server-card.json": () =>
+    jsonResponse({ name: "com.example.agent", version: "1.0.0" }),
+  "/.well-known/agent-card.json": () =>
+    jsonResponse({ name: "Example Agent", url: "https://example.com/a2a" }),
+  "/.well-known/agent-skills/index.json": () => jsonResponse({ skills: [] }),
+  "/.well-known/ucp": () =>
+    jsonResponse({ capabilities: ["dev.ucp.shopping.checkout"] }),
+  "/.well-known/http-message-signatures-directory": () =>
+    jsonResponse({ keys: [{ kty: "OKP", kid: "test" }] }),
+};
+
 describe("runScan", () => {
-  test("happy path: a fully agent-ready site passes every check", async () => {
-    const server = startFixtureServer({
-      "/robots.txt": () => textResponse(GOOD_ROBOTS),
-      "/sitemap.xml": () =>
-        textResponse(GOOD_SITEMAP, {
-          headers: { "content-type": "application/xml" },
-        }),
-      "/llms.txt": () => textResponse(GOOD_LLMS_TXT),
-      "/": markdownAwareHomepage,
-    });
+  test("happy path: every check that can realistically pass on one URL passes", async () => {
+    const server = startFixtureServer(FULLY_AGENT_READY_ROUTES);
+    const fetchImpl = createTestFetch({ dnsAidHasAnswer: true });
 
-    const result = await runScan(server.url.href);
+    const result = await runScan(server.url.href, { fetchImpl });
 
-    expect(result.checks).toHaveLength(6);
+    expect(result.checks).toHaveLength(20);
+
+    // x402 and mpp cannot pass here by design: x402 needs the site root to
+    // respond 402 (incompatible with markdown-negotiation's 200 on the same
+    // URL), and mpp has no discovery mechanism at all and always reports
+    // inconclusive (see checks/mpp.ts).
+    const alwaysExcluded = new Set(["x402", "mpp"]);
     for (const check of result.checks) {
+      if (alwaysExcluded.has(check.id)) continue;
       expect(check.passed).toBe(true);
     }
+    const x402Result = result.checks.find((c) => c.id === "x402");
+    expect(x402Result?.passed).toBe(false);
+    const mppResult = result.checks.find((c) => c.id === "mpp");
+    expect(mppResult?.passed).toBe(false);
+    expect(mppResult?.inferred).toBe(true);
+
+    // composite score only counts the error-tier check (markdown-negotiation), which passes here
     expect(result.score).toBe(100);
     expect(result.grade).toBe("A");
-    for (const category of result.categories) {
-      expect(category.score).toBe(100);
-    }
+
+    const findYou = result.categories.find(
+      (c) => c.category === "can-agents-find-you",
+    );
+    const readYou = result.categories.find(
+      (c) => c.category === "can-agents-read-you",
+    );
+    const reachApp = result.categories.find(
+      (c) => c.category === "can-agents-reach-your-app",
+    );
+    const trustYou = result.categories.find(
+      (c) => c.category === "can-agents-trust-you",
+    );
+    expect(findYou?.score).toBe(100);
+    expect(readYou?.score).toBe(100);
+    expect(reachApp?.score).toBe(100);
+    // trust-you category contains x402 and mpp, which always fail -- it cannot be 100.
+    expect(trustYou?.score).toBeLessThan(100);
   });
 
   test("fully missing: no agent-visibility signals present, every check fails, and category scores reflect that (not just the composite)", async () => {
@@ -107,8 +214,11 @@ describe("runScan", () => {
         }),
     });
 
-    const result = await runScan(server.url.href);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
 
+    expect(result.checks).toHaveLength(20);
     for (const check of result.checks) {
       expect(check.passed).toBe(false);
     }
@@ -130,7 +240,9 @@ describe("runScan", () => {
       "/": markdownAwareHomepage,
     });
 
-    const result = await runScan(server.url.href);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
 
     const robotsCheck = result.checks.find((c) => c.id === "robots-txt");
     const aiBotRulesCheck = result.checks.find((c) => c.id === "ai-bot-rules");
@@ -141,16 +253,18 @@ describe("runScan", () => {
     expect(aiBotRulesCheck?.passed).toBe(false);
     expect(contentSignalsCheck?.passed).toBe(false);
     // the scan itself must complete, not throw
-    expect(result.checks).toHaveLength(6);
+    expect(result.checks).toHaveLength(20);
   });
 
   test("unreachable target: connection refused is reported as failed checks, not an unhandled rejection", async () => {
     // nothing listens on this port: server was never started for this test
     const unreachableUrl = "http://127.0.0.1:1";
 
-    const result = await runScan(unreachableUrl);
+    const result = await runScan(unreachableUrl, {
+      fetchImpl: createTestFetch(),
+    });
 
-    expect(result.checks).toHaveLength(6);
+    expect(result.checks).toHaveLength(20);
     for (const check of result.checks) {
       expect(check.passed).toBe(false);
       expect(check.evidence.length).toBeGreaterThan(0);
@@ -166,7 +280,10 @@ describe("runScan", () => {
     });
 
     const start = Date.now();
-    const result = await runScan(server.url.href, { timeoutMs: 50 });
+    const result = await runScan(server.url.href, {
+      timeoutMs: 50,
+      fetchImpl: createTestFetch(),
+    });
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(1500);
@@ -185,7 +302,10 @@ describe("runScan", () => {
     });
 
     const start = Date.now();
-    const result = await runScan(server.url.href, { timeoutMs: 50 });
+    const result = await runScan(server.url.href, {
+      timeoutMs: 50,
+      fetchImpl: createTestFetch(),
+    });
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(1500);
@@ -204,7 +324,9 @@ describe("runScan", () => {
         }),
     });
 
-    const result = await runScan(server.url.href);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
 
     const markdownCheck = result.checks.find(
       (c) => c.id === "markdown-negotiation",
@@ -214,11 +336,24 @@ describe("runScan", () => {
 
   test("scoring boundary: only warning/notice-tier checks fail, the error-tier check passes, composite score stays top-band while the failing category does not", async () => {
     const server = startFixtureServer({
-      // robots.txt, sitemap, llms.txt all 404 (default handler) -> warning/notice checks fail
-      "/": markdownAwareHomepage, // markdown-negotiation (the only error-tier check) passes
+      // robots.txt, sitemap, llms.txt, link headers all absent (default 404,
+      // no Link header) -> every check in can-agents-find-you fails
+      "/": (req: Request) => {
+        const accept = req.headers.get("accept") ?? "";
+        if (accept.includes("text/markdown")) {
+          return textResponse("# Example", {
+            headers: { "content-type": "text/markdown; charset=utf-8" },
+          });
+        }
+        return textResponse("<html></html>", {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }, // markdown-negotiation (the only error-tier check) passes; no Link header sent
     });
 
-    const result = await runScan(server.url.href);
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
 
     const failing = result.checks.filter((c) => !c.passed);
     const passing = result.checks.filter((c) => c.passed);
@@ -253,9 +388,249 @@ describe("runScan", () => {
       "/": markdownAwareHomepage,
     });
 
-    await runScan(server.url.href);
+    await runScan(server.url.href, { fetchImpl: createTestFetch() });
 
     expect(robotsTxtRequests).toBe(1);
+  });
+
+  test("DNS-AID: an SVCB answer at the discovery hostname passes; no answer fails, both without a live DNS query", async () => {
+    const server = startFixtureServer({});
+
+    const withAnswer = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: true }),
+    });
+    const withoutAnswer = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: false }),
+    });
+
+    expect(withAnswer.checks.find((c) => c.id === "dns-aid")?.passed).toBe(
+      true,
+    );
+    expect(withoutAnswer.checks.find((c) => c.id === "dns-aid")?.passed).toBe(
+      false,
+    );
+  });
+
+  test("DNS-AID: NXDOMAIN (Status 3, the common case for a brand-new discovery name) reads as no-record-found, not a resolver error", async () => {
+    const server = startFixtureServer({});
+    const nxdomainFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ Status: 3 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return fetch(input, init);
+    }) as typeof fetch;
+
+    const result = await runScan(server.url.href, { fetchImpl: nxdomainFetch });
+
+    const dnsAid = result.checks.find((c) => c.id === "dns-aid");
+    expect(dnsAid?.passed).toBe(false);
+    expect(dnsAid?.evidence).toContain("no SVCB record found");
+    expect(dnsAid?.evidence).not.toContain("error");
+  });
+
+  test("DNS-AID: a real resolver error (SERVFAIL, Status 2) is reported distinctly from a genuine no-record answer", async () => {
+    const server = startFixtureServer({});
+    const servfailFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ Status: 2 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return fetch(input, init);
+    }) as typeof fetch;
+
+    const result = await runScan(server.url.href, { fetchImpl: servfailFetch });
+
+    const dnsAid = result.checks.find((c) => c.id === "dns-aid");
+    expect(dnsAid?.passed).toBe(false);
+    expect(dnsAid?.evidence).toContain("resolver returned an error");
+  });
+
+  test("DNS-AID: a resolver that hangs is bounded by timeoutMs, not left to hang the whole scan", async () => {
+    const server = startFixtureServer({});
+    // A mock fetch must honor the abort signal itself to realistically stand
+    // in for the real fetch() -- otherwise this test would prove nothing
+    // about fetchRaw's timeout wiring, only about a mock that never hangs.
+    const hangingDohFetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url =
+        input instanceof URL
+          ? input.href
+          : typeof input === "string"
+            ? input
+            : input.url;
+      if (!url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        return fetch(input, init);
+      }
+      return new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            resolve(
+              new Response(JSON.stringify({}), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+            ),
+          2000,
+        );
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    }) as typeof fetch;
+
+    const start = Date.now();
+    const result = await runScan(server.url.href, {
+      timeoutMs: 50,
+      fetchImpl: hangingDohFetch,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(1500);
+    expect(result.checks.find((c) => c.id === "dns-aid")?.passed).toBe(false);
+  });
+
+  test("x402: a 402 with a payment-required header passes; a plain 402 or a normal 200 does not", async () => {
+    const gatedServer = startFixtureServer({
+      "/": () =>
+        new Response("payment required", {
+          status: 402,
+          headers: { "payment-required": "1" },
+        }),
+    });
+    const bareServer = startFixtureServer({
+      "/": () => new Response("payment required", { status: 402 }),
+    });
+
+    const gatedResult = await runScan(gatedServer.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+    gatedServer.stop(true);
+    const bareResult = await runScan(bareServer.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    expect(gatedResult.checks.find((c) => c.id === "x402")?.passed).toBe(true);
+    expect(bareResult.checks.find((c) => c.id === "x402")?.passed).toBe(false);
+  });
+
+  test("MPP always reports an inconclusive, inferred result regardless of the target -- it never fabricates a pass", async () => {
+    const server = startFixtureServer(FULLY_AGENT_READY_ROUTES);
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch({ dnsAidHasAnswer: true }),
+    });
+
+    const mpp = result.checks.find((c) => c.id === "mpp");
+    expect(mpp?.passed).toBe(false);
+    expect(mpp?.inferred).toBe(true);
+    expect(mpp?.evidence).toContain("cannot be verified");
+  });
+
+  test("Web Bot Auth is tagged inferred: true even when the key directory is found (existence, not enforcement, is verified)", async () => {
+    const server = startFixtureServer({
+      "/.well-known/http-message-signatures-directory": () =>
+        jsonResponse({ keys: [{ kty: "OKP", kid: "test" }] }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const webBotAuth = result.checks.find((c) => c.id === "web-bot-auth");
+    expect(webBotAuth?.passed).toBe(true);
+    expect(webBotAuth?.inferred).toBe(true);
+  });
+
+  test("deep-link association: a valid apple-app-site-association alone is enough to pass", async () => {
+    const server = startFixtureServer({
+      "/.well-known/apple-app-site-association": () =>
+        jsonResponse({ applinks: { details: [] } }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    expect(
+      result.checks.find((c) => c.id === "deep-link-association")?.passed,
+    ).toBe(true);
+  });
+
+  test("deep-link association: valid JSON that is not the right shape does not false-positive", async () => {
+    const server = startFixtureServer({
+      "/.well-known/apple-app-site-association": () =>
+        jsonResponse({ unrelated: true }),
+      "/.well-known/assetlinks.json": () => jsonResponse({ not: "an array" }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    expect(
+      result.checks.find((c) => c.id === "deep-link-association")?.passed,
+    ).toBe(false);
+  });
+
+  test("well-known JSON checks (shared factory): a non-JSON 200 body fails without crashing", async () => {
+    const server = startFixtureServer({
+      "/.well-known/api-catalog": () =>
+        textResponse("<html>not json</html>", {
+          headers: { "content-type": "text/html" },
+        }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const apiCatalog = result.checks.find((c) => c.id === "api-catalog");
+    expect(apiCatalog?.passed).toBe(false);
+    expect(apiCatalog?.evidence).toContain("not valid JSON");
+  });
+
+  test("well-known JSON checks (shared factory): valid JSON in the wrong shape fails, not a false pass", async () => {
+    const server = startFixtureServer({
+      "/.well-known/api-catalog": () => jsonResponse({ unrelated: "field" }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const apiCatalog = result.checks.find((c) => c.id === "api-catalog");
+    expect(apiCatalog?.passed).toBe(false);
+    expect(apiCatalog?.evidence).toContain("linkset");
   });
 });
 
@@ -282,5 +657,40 @@ describe("runChecks", () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.passed).toBe(false);
     expect(results[0]?.evidence).toContain("crashed");
+  });
+});
+
+describe("categoryScore", () => {
+  function result(overrides: Partial<CheckResult>): CheckResult {
+    return {
+      id: "test-check",
+      title: "Test check",
+      category: "test",
+      severityTier: "notice",
+      passed: true,
+      evidence: "",
+      ...overrides,
+    };
+  }
+
+  test("an always-failing inferred check does not cap a category that is otherwise perfect", async () => {
+    const checks = [
+      result({ passed: true }),
+      result({ passed: false, inferred: true }),
+    ];
+    expect(categoryScore(checks)).toBe(100);
+  });
+
+  test("a category made only of inferred checks is not penalized (nothing verifiable to score)", async () => {
+    const checks = [
+      result({ passed: false, inferred: true }),
+      result({ passed: false, inferred: true }),
+    ];
+    expect(categoryScore(checks)).toBe(100);
+  });
+
+  test("a real (non-inferred) failure still lowers the category score", async () => {
+    const checks = [result({ passed: true }), result({ passed: false })];
+    expect(categoryScore(checks)).toBe(50);
   });
 });

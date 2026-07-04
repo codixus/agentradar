@@ -29,6 +29,28 @@ afterEach(() => {
   activeServer = null;
 });
 
+// Intercepts DNS-AID's DNS-over-HTTPS lookup so these tests never make a
+// live call to cloudflare-dns.com, consistent with agentsight-core's own
+// test suite.
+function createNoNetworkFetch(): typeof fetch {
+  return (async (...args: Parameters<typeof fetch>) => {
+    const [input, init] = args;
+    const url =
+      input instanceof URL
+        ? input.href
+        : typeof input === "string"
+          ? input
+          : input.url;
+    if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return fetch(input, init);
+  }) as typeof fetch;
+}
+
 function startAgentReadyFixture() {
   const server = Bun.serve({
     port: 0,
@@ -103,7 +125,9 @@ describe("agentsight CLI", () => {
   test("scan against a real target prints a human-readable report with a grade", async () => {
     const server = startAgentReadyFixture();
     const console_ = captureConsole();
-    const code = await main(["scan", server.url.href]);
+    const code = await main(["scan", server.url.href], {
+      fetchImpl: createNoNetworkFetch(),
+    });
     console_.restore();
     expect(code).toBe(0);
     const output = console_.logs.join("\n");
@@ -114,7 +138,9 @@ describe("agentsight CLI", () => {
   test("scan --json prints valid, parseable JSON matching the ScanResult shape", async () => {
     const server = startAgentReadyFixture();
     const console_ = captureConsole();
-    const code = await main(["scan", server.url.href, "--json"]);
+    const code = await main(["scan", server.url.href, "--json"], {
+      fetchImpl: createNoNetworkFetch(),
+    });
     console_.restore();
     expect(code).toBe(0);
     const parsed = JSON.parse(console_.logs.join("\n"));
@@ -126,7 +152,9 @@ describe("agentsight CLI", () => {
   test("human report shows the real evidence fetched from the target, not a generic description", async () => {
     const server = startAgentReadyFixture();
     const console_ = captureConsole();
-    const code = await main(["scan", server.url.href]);
+    const code = await main(["scan", server.url.href], {
+      fetchImpl: createNoNetworkFetch(),
+    });
     console_.restore();
     expect(code).toBe(0);
     const output = console_.logs.join("\n");

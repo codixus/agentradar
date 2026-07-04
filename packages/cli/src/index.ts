@@ -50,9 +50,14 @@ function parseTargetUrl(raw: string): URL | null {
   }
 }
 
+export interface MainOptions {
+  fetchImpl?: typeof fetch;
+}
+
 async function runScanCommand(
   target: string,
   asJson: boolean,
+  options: MainOptions,
 ): Promise<number> {
   const parsed = parseTargetUrl(target);
   if (!parsed) {
@@ -64,7 +69,7 @@ async function runScanCommand(
 
   let result: ScanResult;
   try {
-    result = await runScan(parsed.href);
+    result = await runScan(parsed.href, { fetchImpl: options.fetchImpl });
   } catch (err) {
     console.error(
       `Scan failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -80,7 +85,10 @@ async function runScanCommand(
   return 0;
 }
 
-export async function main(argv: string[]): Promise<number> {
+export async function main(
+  argv: string[],
+  options: MainOptions = {},
+): Promise<number> {
   const [command, target] = argv;
 
   if (!command) {
@@ -93,7 +101,7 @@ export async function main(argv: string[]): Promise<number> {
       console.error("Usage: agentsight scan <url>");
       return 1;
     }
-    return runScanCommand(target, argv.includes("--json"));
+    return runScanCommand(target, argv.includes("--json"), options);
   }
 
   console.error(`Unknown command: ${command}`);
