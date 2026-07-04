@@ -50,8 +50,11 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   );
   // The DoH probe is an honest GET to cloudflare-dns.com; annotate its step(s)
   // with the DNS question actually asked so the transcript reads meaningfully.
+  // Error steps (status null) keep their network-error detail untouched.
   for (const step of transcript) {
-    step.detail = `SVCB query for ${hostname}`;
+    if (step.status !== null) {
+      step.detail = `SVCB query for ${hostname}`;
+    }
   }
   if (!res) {
     return {

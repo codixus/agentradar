@@ -8,9 +8,11 @@ The two packages are versioned in lockstep and follow semantic versioning.
 Scoring rebalance and a structured audit trail.
 
 This is a data-shape change for consumers of `agentradar-core` and the CLI
-`--json` output. No existing field changes meaning or type, but the scoring
-numbers move and every check now carries additional fields. Consumers that pin
-exact scores or grades should re-baseline.
+`--json` output. No existing `CheckResult` field changes meaning or type, but
+the scoring numbers move and every check now carries additional fields; note
+that `CheckMeta` gained a required `goal` field, which is breaking for external
+code that constructs custom checks. Consumers that pin exact scores or grades
+should re-baseline.
 
 ### Changed
 

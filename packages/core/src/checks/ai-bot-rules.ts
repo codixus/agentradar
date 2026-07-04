@@ -30,7 +30,7 @@ function matchedAiBotTokens(robotsBody: string): string[] {
 // robots.txt is prefetched once per scan and shared via ctx.robotsTxt (see
 // scan.ts); its prefetch steps are shared as this check's transcript.
 async function run(ctx: CheckContext): Promise<CheckResult> {
-  const transcript = ctx.robotsTranscript ?? [];
+  const transcript = [...(ctx.robotsTranscript ?? [])];
   const result = ctx.robotsTxt;
   if (!result?.ok) {
     return {

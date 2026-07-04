@@ -19,7 +19,7 @@ const ISSUE = "No usable robots.txt is published at the site root.";
 // check fetching it independently. Those three checks report the same shared
 // prefetch steps as their transcript (ctx.robotsTranscript).
 async function run(ctx: CheckContext): Promise<CheckResult> {
-  const transcript = ctx.robotsTranscript ?? [];
+  const transcript = [...(ctx.robotsTranscript ?? [])];
   const result = ctx.robotsTxt;
   if (!result) {
     return {
