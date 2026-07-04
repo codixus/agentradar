@@ -6,6 +6,8 @@ const meta: CheckMeta = {
   title: "Machine Payments Protocol",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Support the Machine Payments Protocol so agents can settle payments (no passive signal exists yet).",
+  resources: [{ label: "MPP", url: "https://mpp.dev" }],
 };
 
 // No public discovery header, path, or signal exists for MPP as of the
@@ -14,7 +16,8 @@ const meta: CheckMeta = {
 // probe). Rather than fabricate a heuristic that would produce misleading
 // pass/fail results, this check always reports the same honest "cannot
 // verify" result and is tagged inferred so it never reads as a real
-// pass/fail signal about the scanned site.
+// pass/fail signal about the scanned site. It makes no probe, so it carries
+// no transcript.
 async function run(_ctx: CheckContext): Promise<CheckResult> {
   return {
     ...fail(

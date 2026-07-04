@@ -25,6 +25,7 @@ import type {
   Check,
   CheckContext,
   CheckResult,
+  HttpStep,
   ScanResult,
 } from "./types.ts";
 
@@ -99,8 +100,19 @@ export async function runChecks(
     checks.map((check) => check.run(ctx)),
   );
   return settled.map((outcome, index) => {
-    if (outcome.status === "fulfilled") return outcome.value;
     const check = checks[index];
+    if (outcome.status === "fulfilled") {
+      const result = outcome.value;
+      // goal/resources are static per check: copy them from the meta so every
+      // check body does not have to. issue is only meaningful for a verified
+      // (non-inferred) failure, so drop it on inferred results.
+      return {
+        ...result,
+        goal: check.goal,
+        resources: check.resources,
+        issue: result.inferred ? undefined : result.issue,
+      };
+    }
     return {
       id: check.id,
       title: check.title,
@@ -108,6 +120,8 @@ export async function runChecks(
       severityTier: check.severityTier,
       passed: false,
       evidence: `check crashed: ${String(outcome.reason)}`,
+      goal: check.goal,
+      resources: check.resources,
     };
   });
 }
@@ -133,11 +147,20 @@ export async function runScan(
 
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 8000;
+  const robotsTranscript: HttpStep[] = [];
   const robotsTxt = await fetchText(
     { baseUrl, fetchImpl, timeoutMs },
     "/robots.txt",
+    undefined,
+    robotsTranscript,
   );
-  const ctx: CheckContext = { baseUrl, fetchImpl, timeoutMs, robotsTxt };
+  const ctx: CheckContext = {
+    baseUrl,
+    fetchImpl,
+    timeoutMs,
+    robotsTxt,
+    robotsTranscript,
+  };
 
   const checks = await runChecks(ALL_CHECKS, ctx);
   const { score, grade } = computeScore(checks);

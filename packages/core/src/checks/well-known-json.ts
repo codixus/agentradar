@@ -1,4 +1,10 @@
-import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
+import type {
+  Check,
+  CheckContext,
+  CheckMeta,
+  CheckResult,
+  HttpStep,
+} from "../types.ts";
 import { fetchText } from "./fetch-text.ts";
 import { fail, pass } from "./util.ts";
 
@@ -7,6 +13,7 @@ export interface WellKnownJsonCheckOptions {
   path: string;
   validate?: (json: unknown) => { ok: boolean; detail?: string };
   fixHint?: string;
+  issue?: string;
 }
 
 // Shared shape for the several checks that are all "GET a well-known JSON
@@ -16,16 +23,25 @@ export interface WellKnownJsonCheckOptions {
 export function createWellKnownJsonCheck(
   opts: WellKnownJsonCheckOptions,
 ): Check {
-  async function run(ctx: CheckContext): Promise<CheckResult> {
-    const result = await fetchText(ctx, opts.path);
+  async function evaluate(
+    ctx: CheckContext,
+    steps: HttpStep[],
+  ): Promise<CheckResult> {
+    const result = await fetchText(ctx, opts.path, undefined, steps);
     if (!result) {
-      return fail(opts.meta, `could not reach ${opts.path}`, opts.fixHint);
+      return fail(
+        opts.meta,
+        `could not reach ${opts.path}`,
+        opts.fixHint,
+        opts.issue,
+      );
     }
     if (!result.ok) {
       return fail(
         opts.meta,
         `GET ${opts.path} returned ${result.status}`,
         opts.fixHint,
+        opts.issue,
       );
     }
     let json: unknown;
@@ -43,12 +59,14 @@ export function createWellKnownJsonCheck(
           opts.meta,
           `no ${opts.path} found (server returned an HTML page, likely a catch-all)`,
           opts.fixHint,
+          opts.issue,
         );
       }
       return fail(
         opts.meta,
         `${opts.path} found but is not valid JSON`,
         opts.fixHint,
+        opts.issue,
       );
     }
     if (opts.validate) {
@@ -58,10 +76,16 @@ export function createWellKnownJsonCheck(
           opts.meta,
           verdict.detail ?? `${opts.path} found but does not look valid`,
           opts.fixHint,
+          opts.issue,
         );
       }
     }
     return pass(opts.meta, `${opts.path} found and valid`);
+  }
+  async function run(ctx: CheckContext): Promise<CheckResult> {
+    const steps: HttpStep[] = [];
+    const result = await evaluate(ctx, steps);
+    return { ...result, transcript: steps };
   }
   return { ...opts.meta, run };
 }

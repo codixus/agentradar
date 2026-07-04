@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { CheckContext } from "../types.ts";
+import type { CheckContext, HttpStep } from "../types.ts";
 import { fetchRaw } from "./fetch-raw.ts";
 import { fetchText } from "./fetch-text.ts";
 import { MAX_BODY_BYTES, MAX_REDIRECTS, readCappedText } from "./http.ts";
@@ -213,5 +213,87 @@ describe("markdown-negotiation through the shared primitive (R3)", () => {
     };
     const result = await markdownNegotiationCheck.run(ctx);
     expect(result.passed).toBe(true);
+  });
+
+  test("R3: attaches the redirect chain it followed as a transcript", async () => {
+    const server = startFixtureServer();
+    const ctx: CheckContext = {
+      baseUrl: new URL("/md-redirect", server.url),
+      fetchImpl: fetch,
+      timeoutMs: 2000,
+      robotsTxt: null,
+    };
+    const result = await markdownNegotiationCheck.run(ctx);
+    // /md-redirect (302) -> /md (200), so at least two steps, ending on 200.
+    expect(result.transcript?.length).toBeGreaterThanOrEqual(2);
+    expect(result.transcript?.[0]?.status).toBe(302);
+    expect(result.transcript?.at(-1)?.status).toBe(200);
+  });
+});
+
+describe("transcript recording (R3)", () => {
+  test("fetchRaw records a single step for a plain 200", async () => {
+    const server = startFixtureServer();
+    const steps: HttpStep[] = [];
+    const res = await fetchRaw(
+      rawCtx(),
+      new URL("/plain", server.url),
+      undefined,
+      steps,
+    );
+    expect(res?.status).toBe(200);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.method).toBe("GET");
+    expect(steps[0]?.status).toBe(200);
+    expect(steps[0]?.url).toContain("/plain");
+  });
+
+  test("fetchRaw records each redirect hop as its own step", async () => {
+    const server = startFixtureServer();
+    const steps: HttpStep[] = [];
+    await fetchRaw(rawCtx(), new URL("/chain/3", server.url), undefined, steps);
+    // three 302 hops plus the final 200
+    expect(steps).toHaveLength(4);
+    expect(steps[0]?.status).toBe(302);
+    expect(steps[0]?.detail).toContain("redirect ->");
+    expect(steps.at(-1)?.status).toBe(200);
+  });
+
+  test("fetchRaw records a status-null step when the request errors", async () => {
+    const steps: HttpStep[] = [];
+    const res = await fetchRaw(
+      rawCtx(),
+      "http://127.0.0.1:1/",
+      undefined,
+      steps,
+    );
+    expect(res).toBeNull();
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.status).toBeNull();
+  });
+
+  test("fetchText records the final step and still returns the body", async () => {
+    const server = startFixtureServer();
+    const steps: HttpStep[] = [];
+    const res = await fetchText(
+      textCtx(server.url),
+      "/plain",
+      undefined,
+      steps,
+    );
+    expect(res?.body).toBe("plain-ok");
+    expect(steps.at(-1)?.status).toBe(200);
+  });
+
+  test("fetchText records a status-null step when the request errors", async () => {
+    const steps: HttpStep[] = [];
+    const res = await fetchText(
+      textCtx("http://127.0.0.1:1/"),
+      "/",
+      undefined,
+      steps,
+    );
+    expect(res).toBeNull();
+    expect(steps[0]?.status).toBeNull();
   });
 });

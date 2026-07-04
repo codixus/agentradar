@@ -6,6 +6,10 @@ const meta: CheckMeta = {
   title: "OAuth Protected Resource",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Tell agents which authorization servers guard your API with protected-resource metadata.",
+  resources: [
+    { label: "RFC 9728", url: "https://www.rfc-editor.org/rfc/rfc9728" },
+  ],
 };
 
 export const oauthProtectedResourceCheck: Check = createWellKnownJsonCheck({
@@ -27,4 +31,6 @@ export const oauthProtectedResourceCheck: Check = createWellKnownJsonCheck({
   },
   fixHint:
     "Publish RFC 9728 protected resource metadata at /.well-known/oauth-protected-resource.",
+  issue:
+    "No OAuth protected-resource metadata is published at /.well-known/oauth-protected-resource.",
 });

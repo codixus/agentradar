@@ -6,6 +6,10 @@ const meta: CheckMeta = {
   title: "OAuth discovery",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "Publish OAuth authorization-server metadata so agents can authenticate on their own.",
+  resources: [
+    { label: "RFC 8414", url: "https://www.rfc-editor.org/rfc/rfc8414" },
+  ],
 };
 
 export const oauthDiscoveryCheck: Check = createWellKnownJsonCheck({
@@ -27,4 +31,6 @@ export const oauthDiscoveryCheck: Check = createWellKnownJsonCheck({
   },
   fixHint:
     "Publish RFC 8414 authorization server metadata at /.well-known/oauth-authorization-server.",
+  issue:
+    "No OAuth authorization-server metadata is published at /.well-known/oauth-authorization-server.",
 });

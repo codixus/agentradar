@@ -39,7 +39,7 @@ Add `--json` for machine-readable output:
 
 ## What it checks
 
-20 checks, grouped by outcome rather than protocol name. The composite score/grade is affected only by "error"-tier checks; "warning" and "notice" checks are shown but never lower the score, since several of these signals are only weeks old at the time of writing.
+20 checks, grouped by outcome rather than protocol name. The composite score is a tier-weighted pass ratio: error-tier checks weigh 4, warning-tier 2, and notice-tier 1. Notice-tier checks are emerging standards (several only weeks old at the time of writing) that carry real but low weight, so adopting them is what moves a site from a B into an A. Any failing error-tier check caps the grade at C, so a site that cannot serve a load-bearing signal never reads as A or B. Grades band at A>=90, B>=72, C>=50, D>=30, else F. Inferred checks (Web Bot Auth, MPP) are excluded from the score entirely.
 
 ### Can agents find your site
 

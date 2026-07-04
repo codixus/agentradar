@@ -6,6 +6,10 @@ const meta: CheckMeta = {
   title: "API Catalog",
   category: "can-agents-trust-you",
   severityTier: "notice",
+  goal: "List your machine-readable APIs in a well-known catalog agents can crawl.",
+  resources: [
+    { label: "RFC 9727", url: "https://www.rfc-editor.org/rfc/rfc9727" },
+  ],
 };
 
 export const apiCatalogCheck: Check = createWellKnownJsonCheck({
@@ -23,4 +27,5 @@ export const apiCatalogCheck: Check = createWellKnownJsonCheck({
     return { ok: true };
   },
   fixHint: "Publish an RFC 9727 API catalog at /.well-known/api-catalog.",
+  issue: "No API catalog is published at /.well-known/api-catalog.",
 });

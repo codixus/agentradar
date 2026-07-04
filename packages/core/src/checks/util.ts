@@ -15,6 +15,7 @@ export function fail(
   meta: CheckMeta,
   evidence: string,
   fixHint?: string,
+  issue?: string,
 ): CheckResult {
   return {
     id: meta.id,
@@ -24,5 +25,6 @@ export function fail(
     passed: false,
     evidence,
     fixHint,
+    issue,
   };
 }

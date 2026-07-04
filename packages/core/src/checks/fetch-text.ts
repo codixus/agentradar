@@ -1,4 +1,4 @@
-import type { CheckContext, TextFetchResult } from "../types.ts";
+import type { CheckContext, HttpStep, TextFetchResult } from "../types.ts";
 import { followRedirects } from "./fetch-raw.ts";
 import { readCappedText } from "./http.ts";
 
@@ -9,10 +9,13 @@ type FetchContext = Pick<CheckContext, "baseUrl" | "fetchImpl" | "timeoutMs">;
 // target that sends headers immediately but stalls the body is still bounded by
 // timeoutMs. The body itself is size-capped (readCappedText) and redirects are
 // capped (followRedirects), so no outbound read is unbounded in bytes or hops.
+//
+// Pass a `steps` array to collect the request(s) made, for a check's transcript.
 export async function fetchText(
   ctx: FetchContext,
   path: string,
   init?: RequestInit,
+  steps?: HttpStep[],
 ): Promise<TextFetchResult | null> {
   const target = new URL(path, ctx.baseUrl);
   const controller = new AbortController();
@@ -23,6 +26,7 @@ export async function fetchText(
       target,
       init,
       controller.signal,
+      steps,
     );
     if (!res) return null;
     const contentType = res.headers.get("content-type") ?? "";
