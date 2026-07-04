@@ -2,7 +2,7 @@
 // Defense-in-depth defaults for the CLI's trust model (the caller picks the
 // scan target, curl-equivalent); they become load-bearing once core is
 // imported behind a web endpoint that accepts attacker-supplied URLs. See
-// codixus/agentsight#1.
+// codixus/agentradar#1.
 
 export const MAX_REDIRECTS = 5;
 export const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MiB

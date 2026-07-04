@@ -24,11 +24,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codixus/agentsight.git"
+    "url": "git+https://github.com/codixus/agentradar.git"
   },
-  "homepage": "https://github.com/codixus/agentsight#readme",
+  "homepage": "https://github.com/codixus/agentradar#readme",
   "bugs": {
-    "url": "https://github.com/codixus/agentsight/issues"
+    "url": "https://github.com/codixus/agentradar/issues"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

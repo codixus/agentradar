@@ -29,7 +29,7 @@ npx agentradar scan example.com --json
 
 The composite grade is affected only by error-tier checks; warning/notice checks are shown but never lower the score. Checks tagged `inferred` confirm only that a signal is published, not that it is enforced.
 
-Full check reference and rationale: <https://github.com/codixus/agentsight#readme>.
+Full check reference and rationale: <https://github.com/codixus/agentradar#readme>.
 
 ## License
 
