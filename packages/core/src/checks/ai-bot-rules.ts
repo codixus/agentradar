@@ -6,7 +6,7 @@ const meta: CheckMeta = {
   id: "ai-bot-rules",
   title: "AI bot rules",
   category: "can-agents-find-you",
-  severityTier: "notice",
+  severityTier: "warning",
 };
 
 function matchedAiBotTokens(robotsBody: string): string[] {

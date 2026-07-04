@@ -2,13 +2,16 @@ import type { Check, CheckContext, CheckMeta, CheckResult } from "../types.ts";
 import { fetchText } from "./fetch-text.ts";
 import { fail, pass } from "./util.ts";
 
-// notice tier: research found 97% of llms.txt files get zero AI requests and
-// Google states they neither help nor harm ranking. Real, but a minor check.
+// warning tier: publishing llms.txt is real, established agent-readiness work
+// and earns headline credit, even though research found ~97% of llms.txt files
+// get zero AI requests and Google says they neither help nor harm ranking --
+// the check measures whether the file was published, not whether bots consume
+// it. (Downgrade to "notice" to keep it out of the composite score.)
 const meta: CheckMeta = {
   id: "llms-txt",
   title: "llms.txt",
   category: "can-agents-read-you",
-  severityTier: "notice",
+  severityTier: "warning",
 };
 
 async function run(ctx: CheckContext): Promise<CheckResult> {

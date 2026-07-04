@@ -183,7 +183,7 @@ describe("runScan", () => {
     expect(mppResult?.passed).toBe(false);
     expect(mppResult?.inferred).toBe(true);
 
-    // composite score only counts the error-tier check (markdown-negotiation), which passes here
+    // every scored (error + warning) check passes here, so the composite is 100
     expect(result.score).toBe(100);
     expect(result.grade).toBe("A");
 
@@ -222,7 +222,7 @@ describe("runScan", () => {
     for (const check of result.checks) {
       expect(check.passed).toBe(false);
     }
-    // markdown-negotiation is the only error-tier check in this batch, and it fails here.
+    // every scored check fails here, so the composite bottoms out at 0.
     expect(result.score).toBe(0);
     expect(result.grade).toBe("F");
     // every category is 100% failing here -- none should report a passing score.
@@ -372,10 +372,11 @@ describe("runScan", () => {
     expect(aiBotRules?.evidence).toContain("cohere-ai");
   });
 
-  test("scoring boundary: only warning/notice-tier checks fail, the error-tier check passes, composite score stays top-band while the failing category does not", async () => {
+  test("composite now reflects failing warning-tier checks, not just the single error-tier check", async () => {
     const server = startFixtureServer({
-      // robots.txt, sitemap, llms.txt, link headers all absent (default 404,
-      // no Link header) -> every check in can-agents-find-you fails
+      // robots.txt, sitemap, llms.txt all absent (default 404) and "/" sends no
+      // Link header -> every warning-tier check fails; only markdown-negotiation
+      // (the sole error-tier check) passes.
       "/": (req: Request) => {
         const accept = req.headers.get("accept") ?? "";
         if (accept.includes("text/markdown")) {
@@ -386,23 +387,22 @@ describe("runScan", () => {
         return textResponse("<html></html>", {
           headers: { "content-type": "text/html; charset=utf-8" },
         });
-      }, // markdown-negotiation (the only error-tier check) passes; no Link header sent
+      },
     });
 
     const result = await runScan(server.url.href, {
       fetchImpl: createTestFetch(),
     });
 
-    const failing = result.checks.filter((c) => !c.passed);
-    const passing = result.checks.filter((c) => c.passed);
-    expect(failing.length).toBeGreaterThan(0);
-    expect(passing.length).toBeGreaterThan(0);
-    expect(result.score).toBe(100);
-    expect(result.grade).toBe("A");
+    const markdown = result.checks.find((c) => c.id === "markdown-negotiation");
+    expect(markdown?.passed).toBe(true);
+    // one passing error-tier check (weight 2) against six failing warning-tier
+    // checks (weight 1 each) -> 2/8 -> 25. The old error-tier-only model
+    // reported a misleading 100/A for exactly this shape.
+    expect(result.score).toBe(25);
+    expect(result.grade).toBe("F");
 
-    // the composite score is deliberately lenient (only error-tier counts),
-    // but a category made entirely of failing warning/notice checks must
-    // not itself read as a perfect 100 -- that would mislead the report.
+    // and the fully-failing category must still read 0, not a perfect 100.
     const findCategory = result.categories.find(
       (c) => c.category === "can-agents-find-you",
     );
@@ -640,11 +640,29 @@ describe("runScan", () => {
     ).toBe(false);
   });
 
-  test("well-known JSON checks (shared factory): a non-JSON 200 body fails without crashing", async () => {
+  test("well-known JSON checks (shared factory): a 200 text/html soft-404 is reported as absent, not as invalid JSON", async () => {
     const server = startFixtureServer({
       "/.well-known/api-catalog": () =>
         textResponse("<html>not json</html>", {
           headers: { "content-type": "text/html" },
+        }),
+    });
+
+    const result = await runScan(server.url.href, {
+      fetchImpl: createTestFetch(),
+    });
+
+    const apiCatalog = result.checks.find((c) => c.id === "api-catalog");
+    expect(apiCatalog?.passed).toBe(false);
+    expect(apiCatalog?.evidence).toContain("HTML page");
+    expect(apiCatalog?.evidence).not.toContain("not valid JSON");
+  });
+
+  test("well-known JSON checks (shared factory): a genuinely malformed JSON body (non-HTML content-type) still reads as invalid JSON", async () => {
+    const server = startFixtureServer({
+      "/.well-known/api-catalog": () =>
+        textResponse('{"linkset": [', {
+          headers: { "content-type": "application/json" },
         }),
     });
 

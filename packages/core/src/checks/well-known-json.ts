@@ -32,6 +32,19 @@ export function createWellKnownJsonCheck(
     try {
       json = JSON.parse(result.body);
     } catch {
+      // Many SPAs answer every unknown path with 200 + their index.html
+      // (a "soft 404") instead of a real 404. Without this guard every absent
+      // well-known JSON doc would be misreported as "found but is not valid
+      // JSON". An HTML content-type on a JSON endpoint is that catch-all, not a
+      // malformed document -- report it as absent. A non-HTML body that still
+      // fails to parse is a genuinely malformed file and keeps that wording.
+      if (result.contentType.toLowerCase().includes("text/html")) {
+        return fail(
+          opts.meta,
+          `no ${opts.path} found (server returned an HTML page, likely a catch-all)`,
+          opts.fixHint,
+        );
+      }
       return fail(
         opts.meta,
         `${opts.path} found but is not valid JSON`,

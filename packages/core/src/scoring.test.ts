@@ -19,40 +19,75 @@ describe("computeScore", () => {
     expect(computeScore([])).toEqual({ score: 100, grade: "A" });
   });
 
-  test("no error-tier checks present yields a perfect score regardless of warning/notice failures", () => {
+  test("only notice/inferred checks present yields a perfect score (nascent specs never move the headline)", () => {
     const checks = [
-      result({ severityTier: "warning", passed: false }),
       result({ severityTier: "notice", passed: false }),
+      result({ severityTier: "error", passed: false, inferred: true }),
     ];
     expect(computeScore(checks)).toEqual({ score: 100, grade: "A" });
   });
 
-  test("all error-tier checks passing yields a perfect score", () => {
+  test("all scored checks passing yields a perfect score", () => {
     const checks = [
       result({ severityTier: "error", passed: true }),
-      result({ severityTier: "error", passed: true }),
+      result({ severityTier: "warning", passed: true }),
     ];
     expect(computeScore(checks)).toEqual({ score: 100, grade: "A" });
   });
 
-  test("all error-tier checks failing yields the lowest grade", () => {
+  test("all scored checks failing yields the lowest grade", () => {
     const checks = [
       result({ severityTier: "error", passed: false }),
-      result({ severityTier: "error", passed: false }),
+      result({ severityTier: "warning", passed: false }),
     ];
     const { score, grade } = computeScore(checks);
     expect(score).toBe(0);
     expect(grade).toBe("F");
   });
 
-  test("warning/notice-tier failures never affect the score, only error-tier does", () => {
-    const withWarnings = [
+  test("a failing warning-tier check now lowers the score (it is no longer ignored)", () => {
+    const checks = [
       result({ severityTier: "error", passed: true }),
       result({ severityTier: "warning", passed: false }),
+    ];
+    // error weight 2 (passing) out of total weight 3 -> 67
+    expect(computeScore(checks).score).toBe(67);
+  });
+
+  test("error tier is weighted twice as heavily as warning tier", () => {
+    const errorPassWarnFail = [
+      result({ severityTier: "error", passed: true }),
+      result({ severityTier: "warning", passed: false }),
+    ];
+    const errorFailWarnPass = [
+      result({ severityTier: "error", passed: false }),
+      result({ severityTier: "warning", passed: true }),
+    ];
+    // 2/3 vs 1/3 -- the same pass count weighs differently by tier
+    expect(computeScore(errorPassWarnFail).score).toBe(67);
+    expect(computeScore(errorFailWarnPass).score).toBe(33);
+  });
+
+  test("notice-tier failures never affect the score, only error/warning tiers do", () => {
+    const withNotice = [
+      result({ severityTier: "error", passed: true }),
+      result({ severityTier: "warning", passed: true }),
       result({ severityTier: "notice", passed: false }),
     ];
-    const withoutWarnings = [result({ severityTier: "error", passed: true })];
-    expect(computeScore(withWarnings)).toEqual(computeScore(withoutWarnings));
+    const withoutNotice = [
+      result({ severityTier: "error", passed: true }),
+      result({ severityTier: "warning", passed: true }),
+    ];
+    expect(computeScore(withNotice)).toEqual(computeScore(withoutNotice));
+  });
+
+  test("inferred checks are excluded even when they sit in a scored tier", () => {
+    const checks = [
+      result({ severityTier: "error", passed: true }),
+      result({ severityTier: "warning", passed: false, inferred: true }),
+    ];
+    // the inferred warning failure is dropped; only the passing error remains
+    expect(computeScore(checks)).toEqual({ score: 100, grade: "A" });
   });
 
   test("a half-passing error tier yields a mid score", () => {
@@ -60,7 +95,6 @@ describe("computeScore", () => {
       result({ severityTier: "error", passed: true }),
       result({ severityTier: "error", passed: false }),
     ];
-    const { score } = computeScore(checks);
-    expect(score).toBe(50);
+    expect(computeScore(checks).score).toBe(50);
   });
 });
