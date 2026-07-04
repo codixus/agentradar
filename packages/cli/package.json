@@ -1,6 +1,6 @@
 {
   "name": "agentradar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI to check whether a site is visible and usable to AI agents.",
   "keywords": [
     "ai-agents",
